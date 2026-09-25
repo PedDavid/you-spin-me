@@ -1,0 +1,383 @@
+# you-spin-me — implementation plan
+
+A self-hosted, Kubernetes-native inventory of external API keys: what each key
+is for, how it is set up, when it expires, where to renew it and where it has to
+be updated. It never stores or reads keys back. On rotation it passes the new
+key once through to the configured secret stores (Kubernetes Secrets, OpenBao)
+and forgets it. Expiry is exported as Prometheus metrics, so alerting lives in
+Alertmanager, next to everything else.
+
+## 1. Decisions so far
+
+| Topic | Decision |
+|---|---|
+| Scope | API keys only (no certificates, SSH keys, domains) |
+| Platform | Kubernetes only |
+| Inventory (source of truth) | A git repo of `ApiKey` custom resources, applied by GitOps (Argo CD / Flux) |
+| Rotation state | CRD `.status`, written by the app. Nothing is stored in OpenBao metadata or Secret annotations |
+| Key handling | Strictly write-only. The app never reads keys back from any store. On submit it may call the provider's API **once** to detect expiry or validate the key |
+| Auth | OIDC login. Everyone who logs in can view; only admins (group claim) can rotate or edit state |
+| Language | Rust |
+| UI | Pages rendered on the server with askama templates, Tailwind, Basecoat (shadcn/ui look without React) and htmx. Ships as a single binary |
+| Alerting | Prometheus metrics plus a shipped `PrometheusRule`. The app has no notifier of its own |
+
+## 2. Architecture
+
+```
+            git (ApiKey YAML)
+                   │  Argo CD / Flux
+                   ▼
+   ┌──────── Kubernetes API ────────┐
+   │  ApiKey CRs (spec from git,    │
+   │  status written by app)        │
+   └──────┬─────────────────▲───────┘
+    watch │                 │ patch apikeys/status
+          ▼                 │
+   ┌─────────────────────────────────┐        ┌───────────────┐
+   │ you-spin-me (single binary)     │──────▶ │ OIDC provider │
+   │  • reflector cache of ApiKeys   │        └───────────────┘
+   │  • axum: UI + /metrics + health │  probe ┌───────────────┐
+   │  • rotation service ────────────┼──────▶ │ GitHub, CF, … │
+   └───────┬─────────────────┬───────┘  once  └───────────────┘
+           │ patch one key   │ KV v2 PATCH
+           ▼                 ▼
+   Kubernetes Secret     OpenBao KV v2          Prometheus ◀── /metrics
+   (target namespaces)   (write-only policy)         │
+                                                Alertmanager
+```
+
+- **One replica.** Writes happen only when an admin takes an action, so there is
+  no reconcile loop to coordinate and no leader election is needed. Metrics are
+  computed from the reflector cache each time Prometheus scrapes.
+- **No database.** Spec comes from git, state lives in `.status`, and sessions are
+  encrypted cookies.
+
+## 3. The `ApiKey` resource
+
+Group and version: `youspin.me/v1alpha1` (placeholder, see open questions).
+The resource is namespaced. By default all `ApiKey`s live in the app's namespace;
+watching every namespace is optional.
+
+```yaml
+apiVersion: youspin.me/v1alpha1
+kind: ApiKey
+metadata:
+  name: renovate-github
+  namespace: you-spin-me
+spec:
+  displayName: Renovate – GitHub token
+  provider: github              # selects the expiry probe; "generic" = no probe
+  owner: david
+  renewUrl: https://github.com/settings/personal-access-tokens
+  setup:
+    permissions:                # free text, shown as badges
+      - "contents: read"
+      - "pull_requests: write"
+    notes: |
+      Fine-grained PAT, resource owner = my org, all repos.
+  rotation:
+    maxAge: 90d                 # optional policy → rotateBy = lastRotated + maxAge
+    warnBefore: 14d             # per-key alert threshold (exported as a metric)
+  targets:                      # written automatically on rotation
+    - kubernetesSecret:
+        namespace: renovate
+        name: renovate-env
+        key: RENOVATE_TOKEN
+    - openbao:
+        mount: secret
+        path: ci/renovate
+        key: token
+  consumers:                    # places to update by hand, shown as a checklist
+    - "GitHub Actions secret RENOVATE_TOKEN in PedDavid/infra"
+status:                         # written only by the app
+  lastRotated: "2026-09-20T10:12:00Z"
+  rotatedBy: david@example.com
+  expiresAt: "2026-12-19T00:00:00Z"   # effective expiry
+  expiresAtSource: probe              # probe | manual | none
+  manualExpiresAt: null
+  probe:
+    at: "2026-09-20T10:12:00Z"
+    identity: "PedDavid"              # e.g. token owner, never the key itself
+  targets:
+    - ref: kubernetesSecret/renovate/renovate-env#RENOVATE_TOKEN
+      lastWritten: "2026-09-20T10:12:01Z"
+      result: ok                      # ok | failed
+      message: ""
+  history:                            # bounded, last 10 rotations
+    - at: "2026-09-20T10:12:00Z"
+      by: david@example.com
+      expiresAt: "2026-12-19T00:00:00Z"
+  conditions:
+    - type: Valid                     # spec checks: targets allowed, provider known, …
+      status: "True"
+```
+
+Notes:
+- The CRD **must** use the `status` subresource, so GitOps applies of `spec`
+  never overwrite `.status` and the app only needs `patch` on `apikeys/status`.
+  Argo CD and Flux both ignore `.status` differences.
+- The effective **deadline** is `min(expiresAt, lastRotated + maxAge)`. Keys that
+  never expire still get a deadline from `maxAge`.
+- The CRD YAML is generated from Rust types (`kube` `CustomResource` derive plus
+  `schemars`) by a `crdgen` binary, and CI checks that the committed CRD is up to date.
+- **Recovering from a lost cluster:** `.status` is not in git, so rebuilding the
+  cluster loses rotation state. Affected keys show *unknown* state, an alert
+  fires, and an admin re-records the dates with the **Record rotation** action
+  (section 6). This is accepted, given the decision to keep state in the CRD only.
+
+## 4. Handling keys (write-only)
+
+Rules the code has to follow:
+
+1. The key arrives in one `POST` (a password field with `autocomplete="off"`) and is
+   parsed straight into `secrecy::SecretString`. It is zeroed on drop, cannot be
+   printed with `Debug` or `Display`, and is never cloned into a plain `String`.
+2. Request bodies are never logged: the `tower-http` trace layer logs method,
+   path, status and latency only. Error pages never echo form input.
+3. The key's lifetime is one request: optional probe, then write to the targets,
+   then drop. There is no cache, queue or retry state holding it. If a target
+   fails, htmx swaps only the result panel, so the value stays in the browser's
+   input and the admin can resubmit it.
+4. Responses carry `Cache-Control: no-store` and a strict CSP (`script-src 'self'`,
+   with htmx and Basecoat JS vendored). POSTs need a CSRF token and a same-origin
+   `Origin` header.
+5. Audit trail: a structured log line and a Kubernetes `Event` on the `ApiKey`
+   (who, which key, which targets, result). The key value never appears.
+
+### 4.1 Storage targets
+
+```rust
+#[async_trait]
+pub trait Target: Send + Sync {
+    fn reference(&self) -> String;               // e.g. "openbao/secret/ci/renovate#token"
+    async fn write(&self, key: &SecretString) -> Result<(), TargetError>;
+}
+```
+
+**Kubernetes Secret**
+- Sends a JSON merge patch that changes only `data.<key>`, so other keys in the
+  Secret are left alone.
+- RBAC: `patch` restricted with `resourceNames` to the listed Secrets, and no
+  `get`/`list`/`watch`. The Helm chart generates one Role per target namespace from
+  its values. Since `create` cannot be restricted by name, **the target Secret
+  must already exist**. An opt-in `allowCreate` per namespace grants `create`.
+- Known leak: the response to a `patch` contains the whole object, including
+  `data`. The client discards it without deserializing `data`. RBAC can't prevent
+  this, so it is documented.
+- GitOps catch: if the target Secret is managed by Argo CD or Flux, they will
+  revert its `data`. Either create it outside GitOps or configure
+  `ignoreDifferences` on `/data`. The docs will cover this, and the `Valid`
+  condition warns when it can detect it.
+- Restarting consumers is out of scope. Document using Stakater Reloader (or
+  similar) on the consuming workloads.
+
+**OpenBao KV v2**
+- Authenticates with the Kubernetes auth method (the projected ServiceAccount token).
+- Writes with `PATCH /v1/<mount>/data/<path>`, so other keys at that path are kept.
+  The response only contains version metadata.
+- Policy (shipped as an example):
+  ```hcl
+  path "secret/data/ci/*" { capabilities = ["create", "patch"] }
+  # no read, no list, no metadata access
+  ```
+  If a path does not exist yet, the first write uses `create`. Check-and-set (CAS)
+  is not used, because it would need to read the metadata.
+- A thin client built on `reqwest` (three endpoints) rather than the `vaultrs`
+  crate, to keep dependencies small and control exactly what gets deserialized.
+
+### 4.2 Expiry probes
+
+```rust
+#[async_trait]
+pub trait Provider: Send + Sync {
+    fn id(&self) -> &'static str;
+    async fn probe(&self, key: &SecretString) -> Result<ProbeResult, ProbeError>;
+}
+
+pub struct ProbeResult {
+    pub expires_at: Option<Timestamp>,
+    pub identity: Option<String>,   // shown in UI and status, never the key
+}
+```
+
+- Runs before any target write. If the probe fails (invalid or revoked key), the
+  rotation is aborted and nothing is written, unless the admin ticks *skip
+  verification*.
+- Expiry priority: the probed value if there is one, otherwise the date the admin
+  entered. If both exist and differ, the UI shows a warning.
+- Initial providers (exact endpoints to be confirmed during implementation):
+  - `generic`: no probe; the admin enters the expiry by hand (optional).
+  - `github`: `GET /user`, reading the `github-authentication-token-expiration`
+    response header for PATs, and the login name as identity.
+  - `cloudflare`: `GET /client/v4/user/tokens/verify`, reading the status and
+    expiry of the token.
+- Probes only call a fixed list of provider hosts. The host is never taken from
+  the CR.
+
+## 5. Authentication and authorization
+
+- OIDC authorization code flow with PKCE (`openidconnect` crate). Configured with
+  issuer URL, client ID and secret (from a Kubernetes Secret), and redirect URL.
+- After login, a small session (`sub`, display name, `is_admin`, expiry) is stored
+  in an **encrypted, signed cookie** (`axum-extra` `PrivateCookieJar`), set
+  `HttpOnly`, `Secure`, `SameSite=Lax`, with a short lifetime (e.g. 8h). There is
+  no server-side session store.
+- Admin is decided by a configurable claim and value (default `groups` contains
+  `you-spin-me-admins`).
+- Viewers can see the list, details, renew links and metrics. Admins can also
+  rotate and record rotations.
+- Could add later: step-up authentication for rotation (OIDC `max_age`), forcing
+  a fresh login before any write.
+- `/metrics` and `/healthz` are served on a separate port with no auth, for
+  Prometheus and the kubelet.
+
+## 6. UI
+
+Pages are rendered on the server with askama. Tailwind v4 is built with the
+standalone CLI (no Node.js), components come from Basecoat, htmx handles partial
+updates, and Lucide icons are inline SVG. Every asset is embedded in the binary.
+
+**Keys table (`/`)**
+- Columns: name, provider badge, owner, expiry (relative time plus a colour
+  badge: ok / warning / critical / unknown), last rotated, targets
+  (✓ n / ✗ n), actions (**Renew ↗** opens `renewUrl`; **Rotate** for admins).
+- Sorted by deadline by default. Search and filters (status, provider, owner)
+  run on the server through `hx-get`, with `hx-push-url` so filtered views can be
+  linked.
+
+**Key detail (`/keys/{namespace}/{name}`)**
+- Setup and permissions, notes, renew link, targets with the result of the last
+  write, consumer checklist, rotation history and conditions.
+
+**Rotate dialog (admin)**
+1. Open the renew link (new tab).
+2. Paste the key. Optionally enter an expiry date (`<input type="date">`) and
+   tick *skip verification*.
+3. Submit. The result panel shows the probe result, then each target's result,
+   then the checklist of places to update by hand.
+
+**Record rotation (admin)**
+- Sets `lastRotated` and `expiresAt` without submitting a key. Used for keys with
+  no targets, and for recovering after a cluster rebuild.
+
+**Themes:** shadcn-compatible colour themes as CSS variables, plus light and dark.
+The choice is stored in a cookie. A ⌘K command palette (`<dialog>` plus htmx
+search) is planned for M4.
+
+## 7. Metrics and alerts
+
+Served on `:9090/metrics` with the `prometheus-client` crate. Labels on every key
+metric: `namespace`, `name`, `provider`, `owner`.
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `youspinme_apikey_info{…, display_name, renew_url}` | gauge = 1 | Metadata used in alert annotations |
+| `youspinme_apikey_expiry_timestamp_seconds` | gauge | Effective `expiresAt` (omitted if unknown) |
+| `youspinme_apikey_rotate_by_timestamp_seconds` | gauge | `lastRotated + maxAge` (omitted if no policy) |
+| `youspinme_apikey_deadline_timestamp_seconds` | gauge | The earlier of the two; the one to alert on |
+| `youspinme_apikey_last_rotated_timestamp_seconds` | gauge | |
+| `youspinme_apikey_warn_before_seconds` | gauge | Per-key `warnBefore` (default from config) |
+| `youspinme_apikey_state_known` | gauge 0/1 | 0 if there is no deadline at all |
+| `youspinme_apikey_target_healthy{target}` | gauge 0/1 | Result of the last write per target |
+| `youspinme_rotations_total{result}` | counter | |
+| `youspinme_probe_requests_total{provider,result}` | counter | |
+
+Shipped `PrometheusRule` (Helm-toggleable):
+
+```yaml
+- alert: ApiKeyExpiringSoon
+  expr: |
+    (youspinme_apikey_deadline_timestamp_seconds - time())
+      < on(namespace, name) youspinme_apikey_warn_before_seconds
+    and (youspinme_apikey_deadline_timestamp_seconds - time()) > 0
+  labels: { severity: warning }
+  annotations:
+    summary: "API key {{ $labels.name }} is due in {{ $value | humanizeDuration }}"
+    runbook_url: "https://<app-url>/keys/{{ $labels.namespace }}/{{ $labels.name }}"
+- alert: ApiKeyExpired
+  expr: youspinme_apikey_deadline_timestamp_seconds - time() <= 0
+  labels: { severity: critical }
+- alert: ApiKeyStateUnknown
+  expr: youspinme_apikey_state_known == 0
+  for: 1h
+  labels: { severity: info }
+- alert: ApiKeyTargetWriteFailed
+  expr: youspinme_apikey_target_healthy == 0
+  labels: { severity: warning }
+```
+
+A Grafana dashboard JSON (keys by deadline, recent rotations) comes in M4.
+
+## 8. Project layout
+
+```
+Cargo.toml
+src/
+  main.rs            # config, tracing, spawns web + metrics servers
+  config.rs          # env/flags (figment or clap)
+  crd.rs             # ApiKey spec/status types (CustomResource + JsonSchema)
+  bin/crdgen.rs      # prints the CRD YAML
+  k8s/
+    store.rs         # reflector cache of ApiKeys
+    status.rs        # status patches, Events
+  rotation.rs        # probe → targets → status, orchestration
+  targets/{mod,kubernetes,openbao}.rs
+  providers/{mod,generic,github,cloudflare}.rs
+  metrics.rs         # collector computing gauges from the store at scrape time
+  web/
+    mod.rs           # router, middleware (trace, CSP, CSRF, no-store)
+    auth.rs          # OIDC flow, session cookie, Admin extractor
+    pages.rs         # handlers
+templates/           # askama templates (base, table, detail, dialogs, partials)
+assets/
+  app.css            # Tailwind entry: @import basecoat, theme variables
+  vendor/            # htmx.min.js, basecoat JS (pinned, checked in)
+deploy/
+  crds/apikeys.yaml  # generated
+  helm/you-spin-me/  # Deployment, SA, RBAC, Service, ServiceMonitor, PrometheusRule
+  examples/          # sample ApiKeys, OpenBao policy, Argo ignoreDifferences
+Dockerfile           # tailwind build → cargo build (musl) → distroless/static
+```
+
+Main crates: `tokio`, `axum`, `axum-extra`, `tower-http`, `askama`, `kube`
+(runtime, derive), `k8s-openapi`, `schemars`, `serde`, `openidconnect`,
+`reqwest` (rustls), `secrecy`, `zeroize`, `prometheus-client`, `tracing`, and
+`jiff` or `chrono` (whichever `k8s-openapi` uses).
+
+Kept a single crate until there is a reason to split it.
+
+## 9. Milestones
+
+**M0 – Skeleton**
+- Cargo project, CI (fmt, clippy `-D warnings`, tests, CRD drift check), Dockerfile, Helm chart skeleton.
+- `ApiKey` types, `crdgen`, example resources.
+
+**M1 – Useful without handling any keys**
+- Reflector, keys table and detail pages, Basecoat + Tailwind pipeline, themes (light/dark).
+- OIDC login and the admin role.
+- **Record rotation** action (status patch, Event, audit log).
+- Metrics, `PrometheusRule`, ServiceMonitor.
+- *After M1 the app is already a working expiry tracker with alerts.*
+
+**M2 – Rotation through Kubernetes Secrets**
+- Rotate dialog, `SecretString` handling, Kubernetes Secret target, `generic` provider.
+- RBAC generated per target namespace, `Valid` condition checks, CSRF and CSP hardening.
+- Tests: targets against a kind cluster in CI, and a check that the key value never appears in logs.
+
+**M3 – OpenBao and probes**
+- OpenBao KV v2 target (Kubernetes auth, PATCH), example policy.
+- `github` and `cloudflare` probes, handling mismatches with the manually entered expiry.
+
+**M4 – Polish**
+- ⌘K palette, more themes, Grafana dashboard.
+- Step-up auth for rotation, more providers as needed.
+
+## 10. Open questions
+
+1. **Name and CRD group.** `youspin.me` is a placeholder. CRD groups should be a
+   domain you control, e.g. `you-spin-me.<your-domain>`.
+2. **Where `ApiKey`s live.** One namespace (simplest RBAC, default) or next to their
+   consumers (watching every namespace needs a ClusterRole for `apikeys`).
+3. **Default `warnBefore`** (proposal: 14 days) and whether `critical` should fire
+   before the deadline, e.g. at 3 days.
+4. **Target Secret creation.** Is "must already exist, opt-in `allowCreate`" acceptable?
