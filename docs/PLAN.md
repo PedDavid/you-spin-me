@@ -8,12 +8,12 @@ from OpenBao through the External Secrets Operator (or similar), never from this
 app. Expiry is exported as Prometheus metrics, so alerting lives in
 Alertmanager, next to everything else.
 
-## 1. Decisions so far
+## 1. Decisions
 
 | Topic | Decision |
 |---|---|
 | Scope | API keys only (no certificates, SSH keys, domains) |
-| Platform | Kubernetes only |
+| Platform | Kubernetes only. CRD group `you-spin-me.prdv.cloud`; all `ApiKey`s in one namespace |
 | Inventory (source of truth) | A git repo of `ApiKey` custom resources, applied by GitOps (Argo CD / Flux) |
 | Rotation state | CRD `.status`, written by the app. Nothing is stored in OpenBao metadata or Secret annotations |
 | Storage target | OpenBao KV v2 only. No Kubernetes Secret adapter: the app has no RBAC on `secrets` at all, and ESO syncs OpenBao into Kubernetes Secrets |
@@ -21,7 +21,7 @@ Alertmanager, next to everything else.
 | Auth | OIDC login. Everyone who logs in can view; only admins (group claim) can rotate or edit state |
 | Language | Rust |
 | UI | Pages rendered on the server with askama templates, Tailwind, Basecoat (shadcn/ui look without React) and htmx. Ships as a single binary |
-| Alerting | Prometheus metrics plus a shipped `PrometheusRule`. The app has no notifier of its own |
+| Alerting | Prometheus metrics plus a shipped `PrometheusRule`: warning at 14 days, critical at 5 days (both overridable per key). The app has no notifier of its own |
 
 ## 2. Architecture
 
@@ -58,12 +58,14 @@ Alertmanager, next to everything else.
 
 ## 3. The `ApiKey` resource
 
-Group and version: `youspin.me/v1alpha1` (placeholder, see open questions).
-The resource is namespaced. By default all `ApiKey`s live in the app's namespace;
-watching every namespace is optional.
+Group and version: `you-spin-me.prdv.cloud/v1alpha1`. A project subdomain under
+`prdv.cloud` leaves room for other projects' CRDs.
+The resource is namespaced, and all `ApiKey`s live in one namespace: the app's
+own namespace by default, or a dedicated one set in the Helm values. The app
+only watches that namespace, so a namespaced Role is enough (no ClusterRole).
 
 ```yaml
-apiVersion: youspin.me/v1alpha1
+apiVersion: you-spin-me.prdv.cloud/v1alpha1
 kind: ApiKey
 metadata:
   name: renovate-github
@@ -81,7 +83,8 @@ spec:
       Fine-grained PAT, resource owner = my org, all repos.
   rotation:
     maxAge: 90d                 # optional policy → rotateBy = lastRotated + maxAge
-    warnBefore: 14d             # per-key alert threshold (exported as a metric)
+    warnBefore: 14d             # optional per-key thresholds (defaults: 14d / 5d),
+    criticalBefore: 5d          # exported as metrics for the alert rules
   targets:                      # written automatically on rotation
     - openbao:
         mount: secret
@@ -250,7 +253,8 @@ updates, and Lucide icons are inline SVG. Every asset is embedded in the binary.
 
 **Keys table (`/`)**
 - Columns: name, provider badge, owner, expiry (relative time plus a colour
-  badge: ok / warning / critical / unknown), last rotated, targets
+  badge: ok / warning ≤ warnBefore / critical ≤ criticalBefore / expired /
+  unknown), last rotated, targets
   (✓ n / ✗ n), actions (**Renew ↗** opens `renewUrl`; **Rotate** for admins).
 - Sorted by deadline by default. Search and filters (status, provider, owner)
   run on the server through `hx-get`, with `hx-push-url` so filtered views can be
@@ -287,7 +291,8 @@ metric: `namespace`, `name`, `provider`, `owner`.
 | `youspinme_apikey_rotate_by_timestamp_seconds` | gauge | `lastRotated + maxAge` (omitted if no policy) |
 | `youspinme_apikey_deadline_timestamp_seconds` | gauge | The earlier of the two; the one to alert on |
 | `youspinme_apikey_last_rotated_timestamp_seconds` | gauge | |
-| `youspinme_apikey_warn_before_seconds` | gauge | Per-key `warnBefore` (default from config) |
+| `youspinme_apikey_warn_before_seconds` | gauge | Per-key `warnBefore` (default 14d, configurable) |
+| `youspinme_apikey_critical_before_seconds` | gauge | Per-key `criticalBefore` (default 5d, configurable) |
 | `youspinme_apikey_state_known` | gauge 0/1 | 0 if there is no deadline at all |
 | `youspinme_apikey_target_healthy{target}` | gauge 0/1 | Result of the last write per target |
 | `youspinme_rotations_total{result}` | counter | |
@@ -296,15 +301,24 @@ metric: `namespace`, `name`, `provider`, `owner`.
 Shipped `PrometheusRule` (Helm-toggleable):
 
 ```yaml
+# warning between warnBefore and criticalBefore, critical inside criticalBefore,
+# so each key has only one of the two firing at a time
 - alert: ApiKeyExpiringSoon
   expr: |
     (youspinme_apikey_deadline_timestamp_seconds - time())
       < on(namespace, name) youspinme_apikey_warn_before_seconds
-    and (youspinme_apikey_deadline_timestamp_seconds - time()) > 0
+    and (youspinme_apikey_deadline_timestamp_seconds - time())
+      >= on(namespace, name) youspinme_apikey_critical_before_seconds
   labels: { severity: warning }
   annotations:
     summary: "API key {{ $labels.name }} is due in {{ $value | humanizeDuration }}"
     runbook_url: "https://<app-url>/keys/{{ $labels.namespace }}/{{ $labels.name }}"
+- alert: ApiKeyExpiringVerySoon
+  expr: |
+    (youspinme_apikey_deadline_timestamp_seconds - time())
+      < on(namespace, name) youspinme_apikey_critical_before_seconds
+    and (youspinme_apikey_deadline_timestamp_seconds - time()) > 0
+  labels: { severity: critical }
 - alert: ApiKeyExpired
   expr: youspinme_apikey_deadline_timestamp_seconds - time() <= 0
   labels: { severity: critical }
@@ -384,12 +398,3 @@ Kept a single crate until there is a reason to split it.
 **M4 – Polish**
 - ⌘K palette, more themes, Grafana dashboard.
 - Step-up auth for rotation, more providers as needed.
-
-## 10. Open questions
-
-1. **Name and CRD group.** `youspin.me` is a placeholder. CRD groups should be a
-   domain you control, e.g. `you-spin-me.<your-domain>`.
-2. **Where `ApiKey`s live.** One namespace (simplest RBAC, default) or next to their
-   consumers (watching every namespace needs a ClusterRole for `apikeys`).
-3. **Default `warnBefore`** (proposal: 14 days) and whether `critical` should fire
-   before the deadline, e.g. at 3 days.
