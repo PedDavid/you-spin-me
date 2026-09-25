@@ -27,6 +27,12 @@ pub fn relative(t: Timestamp, now: Timestamp) -> String {
     }
 }
 
+/// Only http(s) URLs are rendered as links (never `javascript:` and co).
+pub fn safe_link(url: &str) -> Option<String> {
+    let parsed = url::Url::parse(url).ok()?;
+    matches!(parsed.scheme(), "http" | "https").then(|| parsed.to_string())
+}
+
 pub fn state_label(state: State) -> &'static str {
     match state {
         State::Expired => "Expired",
@@ -91,7 +97,7 @@ impl KeyRow {
                         .count()
                 })
                 .unwrap_or(0),
-            renew_url: key.spec.renew_url.clone(),
+            renew_url: key.spec.renew_url.as_deref().and_then(safe_link),
             valid: key
                 .condition(VALID_CONDITION)
                 .is_none_or(|c| c.status == "True"),
@@ -245,6 +251,17 @@ impl KeyDetail {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_http_links_are_rendered() {
+        assert_eq!(
+            safe_link("https://github.com/settings/tokens").as_deref(),
+            Some("https://github.com/settings/tokens")
+        );
+        assert_eq!(safe_link("javascript:alert(1)"), None);
+        assert_eq!(safe_link("data:text/html,x"), None);
+        assert_eq!(safe_link("not a url"), None);
+    }
 
     #[test]
     fn relative_times() {
