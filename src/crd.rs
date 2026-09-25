@@ -28,7 +28,7 @@ const DURATION_PATTERN: &str = r"^[0-9]+(s|m|h|d|w)$";
     doc = "An external API key: how it is set up, where to renew it and where it is written on rotation.",
     printcolumn = r#"{"name":"Provider","type":"string","jsonPath":".spec.provider"}"#,
     printcolumn = r#"{"name":"Owner","type":"string","jsonPath":".spec.owner"}"#,
-    printcolumn = r#"{"name":"Expires","type":"date","jsonPath":".status.expiresAt"}"#,
+    printcolumn = r#"{"name":"Expires","type":"string","jsonPath":".status.expiresAt"}"#,
     printcolumn = r#"{"name":"Rotated","type":"date","jsonPath":".status.lastRotated"}"#,
     printcolumn = r#"{"name":"Valid","type":"string","jsonPath":".status.conditions[?(@.type==\"Valid\")].status"}"#
 )]
