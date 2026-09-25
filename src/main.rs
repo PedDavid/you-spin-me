@@ -11,7 +11,11 @@ use you_spin_me::config::Config;
 use you_spin_me::demo;
 use you_spin_me::k8s::KubeRepository;
 use you_spin_me::metrics::Metrics;
+use you_spin_me::providers::{NoProbe, ProbeResult, Prober, StaticProber};
 use you_spin_me::repo::{MemoryRepository, Repository};
+use you_spin_me::rotation::Rotator;
+use you_spin_me::targets::openbao::OpenBao;
+use you_spin_me::targets::{MemoryWriter, NoStore, TargetWriter};
 use you_spin_me::web::auth::AuthMode;
 use you_spin_me::web::{self, AppState};
 
@@ -38,8 +42,17 @@ async fn main() -> anyhow::Result<()> {
     let auth = AuthMode::from_config(&cfg.auth, &cfg.public_url, demo_dev_auth)?;
     let cookie_key = load_cookie_key(&cfg)?;
 
+    let (writer, prober) = stores(&cfg)?;
+    let rotator = Arc::new(Rotator::new(
+        repo.clone(),
+        writer,
+        prober,
+        metrics.clone(),
+        cfg.allowed_paths(),
+    ));
+
     let ops = web::ops_router(repo.clone(), metrics.clone());
-    let state = AppState::new(cfg.clone(), repo, metrics, auth, cookie_key);
+    let state = AppState::new(cfg.clone(), repo, metrics, auth, rotator, cookie_key);
     let app = web::router(state);
 
     let ui_listener = tokio::net::TcpListener::bind(cfg.listen).await?;
@@ -50,6 +63,31 @@ async fn main() -> anyhow::Result<()> {
         r = axum::serve(ops_listener, ops).with_graceful_shutdown(shutdown()) => r?,
     }
     Ok(())
+}
+
+type Stores = (Arc<dyn TargetWriter>, Arc<dyn Prober>);
+
+fn stores(cfg: &Config) -> anyhow::Result<Stores> {
+    if cfg.demo {
+        let writer = MemoryWriter::default();
+        writer.fail(
+            "openbao/secret/backups/restic#hcloud_token",
+            "OpenBao write returned 403: permission denied",
+        );
+        let prober = StaticProber(Ok(Some(ProbeResult {
+            expires_at: Some(jiff::Timestamp::now() + jiff::SignedDuration::from_hours(90 * 24)),
+            identity: Some("demo-user".into()),
+        })));
+        return Ok((Arc::new(writer), Arc::new(prober)));
+    }
+    let writer: Arc<dyn TargetWriter> = match OpenBao::from_config(&cfg.openbao)? {
+        Some(bao) => Arc::new(bao),
+        None => {
+            warn!("no --openbao-addr: rotating keys with targets will fail");
+            Arc::new(NoStore)
+        }
+    };
+    Ok((writer, Arc::new(NoProbe)))
 }
 
 fn init_tracing(json: bool) {

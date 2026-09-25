@@ -4,6 +4,7 @@ pub mod demo;
 pub mod duration;
 pub mod k8s;
 pub mod metrics;
+pub mod providers;
 pub mod repo;
 pub mod rotation;
 pub mod schedule;
