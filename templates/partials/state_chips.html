@@ -1,0 +1,12 @@
+<div id="state-chips" class="flex flex-wrap gap-2" role="group" aria-label="Filter by state"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <label class="state-chip" data-active="{{ filters.state.is_empty() }}">
+    <input type="radio" name="state" value="" class="sr-only" {% if filters.state.is_empty() %}checked{% endif %}>
+    All <span class="text-muted-foreground">{{ matching }}</span>
+  </label>
+  {% for c in counts %}
+  <label class="state-chip" data-state="{{ c.state }}" data-active="{{ c.active }}">
+    <input type="radio" name="state" value="{{ c.state }}" class="sr-only" {% if c.active %}checked{% endif %}>
+    <span class="state-dot"></span>{{ c.label }} <span class="text-muted-foreground">{{ c.count }}</span>
+  </label>
+  {% endfor %}
+</div>

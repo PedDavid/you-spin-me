@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex flex-col gap-6">
+  <a href="/" class="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground [&>svg]:size-4">
+    {% include "icons/chevron-left.svg" %} All keys
+  </a>
+
+  {% if !notice.is_empty() %}
+  <div class="alert" role="status">
+    {% include "icons/circle-check.svg" %}
+    <h2>{{ notice }}</h2>
+  </div>
+  {% endif %}
+
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div class="flex flex-col gap-1">
+      <h1 class="text-2xl font-semibold tracking-tight">{{ key.row.display_name }}</h1>
+      <div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+        <span class="badge state-badge" data-state="{{ key.row.state_str() }}"><span class="state-dot"></span>{{ key.row.state_label() }}</span>
+        <span class="badge" data-variant="outline">{{ key.row.provider }}</span>
+        {% if !key.row.owner.is_empty() %}<span>owned by {{ key.row.owner }}</span>{% endif %}
+        <code class="text-xs">{{ key.row.name }}</code>
+      </div>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      {% if let Some(url) = key.row.renew_url %}
+      <a class="btn" data-variant="outline" href="{{ url }}" target="_blank" rel="noopener noreferrer">
+        Renew {% include "icons/external-link.svg" %}
+      </a>
+      {% endif %}
+      {% if layout.admin %}
+      <button type="button" class="btn" data-variant="secondary" data-dialog-open="record-dialog">
+        {% include "icons/notebook-pen.svg" %} Record rotation
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% for c in key.conditions %}{% if !c.ok %}
+  <div class="alert" data-variant="destructive" role="alert">
+    {% include "icons/triangle-alert.svg" %}
+    <h2>{{ c.type_ }}: {{ c.reason }}</h2>
+    <section>{{ c.message }}</section>
+  </div>
+  {% endif %}{% endfor %}
+
+  <div class="grid gap-4 md:grid-cols-2">
+    <div class="card">
+      <header>
+        <h2>Schedule</h2>
+        <p>The deadline is the earlier of the expiry and the rotation policy.</p>
+      </header>
+      <section>
+        <dl class="kv">
+          <dt>Due</dt>
+          <dd>{% if key.row.deadline_date.is_empty() %}unknown{% else %}{{ key.row.deadline_date }} ({{ key.row.deadline_rel }}, {{ key.row.deadline_kind }}){% endif %}</dd>
+          <dt>Expires</dt>
+          <dd>{% if key.expires_at.is_empty() %}—{% else %}{{ key.expires_at }}{% if !key.expires_source.is_empty() %} <span class="text-muted-foreground">· {{ key.expires_source }}</span>{% endif %}{% endif %}</dd>
+          <dt>Rotate by</dt>
+          <dd>{% if key.rotate_by.is_empty() %}—{% else %}{{ key.rotate_by }} <span class="text-muted-foreground">· max age {{ key.max_age }}</span>{% endif %}</dd>
+          <dt>Last rotated</dt>
+          <dd>{% if key.last_rotated_date.is_empty() %}never{% else %}{{ key.last_rotated_date }}{% if !key.rotated_by.is_empty() %} <span class="text-muted-foreground">by {{ key.rotated_by }}</span>{% endif %}{% endif %}</dd>
+          <dt>Alerts</dt>
+          <dd>warning {{ key.warn_before }} before, critical {{ key.critical_before }} before</dd>
+          {% if !key.probe_at.is_empty() %}
+          <dt>Detected</dt>
+          <dd>{% if !key.probe_identity.is_empty() %}belongs to <code>{{ key.probe_identity }}</code>, {% endif %}checked {{ key.probe_at }}</dd>
+          {% endif %}
+        </dl>
+        {% if key.expiry_mismatch %}
+        <p class="mt-3 text-sm text-destructive">The provider reports expiry {{ key.probe_expiry }}, but {{ key.manual_expires_at }} was entered by hand. The provider's date is used.</p>
+        {% endif %}
+      </section>
+    </div>
+
+    <div class="card">
+      <header>
+        <h2>Setup</h2>
+        <p>How the key is configured at the provider.</p>
+      </header>
+      <section class="flex flex-col gap-3">
+        {% if key.permissions.is_empty() %}
+        <p class="text-sm text-muted-foreground">No permissions listed.</p>
+        {% else %}
+        <div class="flex flex-wrap gap-1.5">
+          {% for p in key.permissions %}<span class="badge" data-variant="secondary">{{ p }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        {% if !key.notes.is_empty() %}<p class="whitespace-pre-line text-sm">{{ key.notes }}</p>{% endif %}
+      </section>
+    </div>
+
+    <div class="card">
+      <header>
+        <h2>Targets</h2>
+        <p>Written automatically when a new key is submitted.</p>
+      </header>
+      <section>
+        {% if key.targets.is_empty() %}
+        <p class="text-sm text-muted-foreground">No targets: this key is tracked only. Use <em>Record rotation</em> after renewing it.</p>
+        {% else %}
+        <ul class="flex flex-col gap-2 text-sm">
+          {% for t in key.targets %}
+          <li class="flex flex-wrap items-center justify-between gap-2">
+            <code class="break-all">{{ t.reference }}</code>
+            <span class="flex items-center gap-2">
+              {% if t.result == "ok" %}<span class="badge state-badge" data-state="ok"><span class="state-dot"></span>ok</span>
+              {% else if t.result == "failed" %}<span class="badge" data-variant="destructive">failed</span>
+              {% else %}<span class="badge" data-variant="outline">{{ t.result }}</span>{% endif %}
+              <span class="text-muted-foreground">{{ t.last_written }}</span>
+            </span>
+            {% if !t.message.is_empty() %}<p class="w-full text-xs text-destructive">{{ t.message }}</p>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </section>
+    </div>
+
+    <div class="card">
+      <header>
+        <h2>Update by hand</h2>
+        <p>Places the key must be changed manually after rotating.</p>
+      </header>
+      <section>
+        {% if key.consumers.is_empty() %}
+        <p class="text-sm text-muted-foreground">Nothing listed.</p>
+        {% else %}
+        <ul class="flex list-disc flex-col gap-1 ps-5 text-sm">
+          {% for c in key.consumers %}<li>{{ c }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+
+  <div class="card">
+    <header>
+      <h2>History</h2>
+      <p>The last {{ key.history.len() }} rotations.</p>
+    </header>
+    <section>
+      {% if key.history.is_empty() %}
+      <p class="text-sm text-muted-foreground">No rotations yet.</p>
+      {% else %}
+      <div class="table-container">
+        <table class="table">
+          <thead><tr><th>When</th><th>What</th><th>By</th><th>Expires</th></tr></thead>
+          <tbody>
+            {% for h in key.history %}
+            <tr><td>{{ h.at }}</td><td>{{ h.kind }}</td><td>{{ h.by }}</td><td>{{ h.expires }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block dialogs %}
+{% if layout.admin %}
+<dialog id="record-dialog" class="dialog" aria-labelledby="record-title">
+  <form method="post" action="/keys/{{ key.row.name }}/record" class="w-full sm:max-w-md">
+    <input type="hidden" name="_csrf" value="{{ layout.csrf }}">
+    <header>
+      <h2 id="record-title">Record rotation</h2>
+      <p>For keys rotated outside this app, or to restore dates after a cluster rebuild. No key is submitted.</p>
+    </header>
+    <section class="flex flex-col gap-4">
+      <div class="field">
+        <label for="rotated_at">Rotated on</label>
+        <input id="rotated_at" type="date" name="rotated_at" value="{{ today }}" max="{{ today }}" required>
+      </div>
+      <div class="field">
+        <label for="expires_at">Expires on <span class="text-muted-foreground">(optional)</span></label>
+        <input id="expires_at" type="date" name="expires_at">
+        <p>Leave empty if the key does not expire; the rotation policy still applies.</p>
+      </div>
+    </section>
+    <footer>
+      <button type="button" class="btn" data-variant="outline" data-dialog-close>Cancel</button>
+      <button type="submit" class="btn">Record</button>
+    </footer>
+    <button type="button" data-dialog-close aria-label="Close">{% include "icons/x.svg" %}</button>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

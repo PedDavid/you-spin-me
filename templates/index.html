@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex flex-col gap-6">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">API keys</h1>
+      <p class="text-muted-foreground text-sm">What each key is for, when it is due and where it goes.</p>
+    </div>
+  </div>
+
+  <form id="filters" class="flex flex-col gap-3" hx-get="/" hx-target="#keys-table" hx-push-url="true"
+        hx-trigger="input changed delay:250ms from:#q, change">
+    {% include "partials/state_chips.html" %}
+    <div class="flex flex-wrap gap-2">
+      <div class="relative grow sm:max-w-xs">
+        <span class="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground [&>svg]:size-4">{% include "icons/search.svg" %}</span>
+        <input id="q" class="input ps-8" type="search" name="q" value="{{ filters.q }}" placeholder="Filter by name, owner, provider…" aria-label="Filter">
+      </div>
+      <select class="select" name="provider" aria-label="Provider">
+        <option value="">All providers</option>
+        {% for p in providers %}
+        <option value="{{ p }}" {% if *p == filters.provider %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+      <select class="select" name="sort" aria-label="Sort">
+        <option value="" {% if filters.sort.is_empty() %}selected{% endif %}>Most urgent first</option>
+        <option value="name" {% if filters.sort == "name" %}selected{% endif %}>Name</option>
+        <option value="rotated" {% if filters.sort == "rotated" %}selected{% endif %}>Least recently rotated</option>
+      </select>
+    </div>
+  </form>
+
+  <div id="keys-table">
+    {% include "partials/keys_table.html" %}
+  </div>
+</div>
+{% endblock %}

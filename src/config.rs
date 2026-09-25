@@ -60,8 +60,8 @@ pub struct Config {
     #[command(flatten)]
     pub openbao: OpenBaoConfig,
 
-    /// Serve sample data from memory, without Kubernetes or OpenBao. Implies
-    /// --insecure-dev-auth. For trying out the UI only.
+    /// Serve sample data from memory, without Kubernetes or OpenBao. Uses
+    /// --insecure-dev-auth unless OIDC is configured. For trying out the UI only.
     #[arg(long, env = "YSM_DEMO")]
     pub demo: bool,
 
