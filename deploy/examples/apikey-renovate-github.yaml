@@ -1,0 +1,25 @@
+apiVersion: you-spin-me.prdv.cloud/v1alpha1
+kind: ApiKey
+metadata:
+  name: renovate-github
+  namespace: you-spin-me
+spec:
+  displayName: Renovate – GitHub token
+  provider: github
+  owner: david
+  renewUrl: https://github.com/settings/personal-access-tokens
+  setup:
+    permissions:
+      - "contents: read"
+      - "pull_requests: write"
+    notes: |
+      Fine-grained PAT, resource owner = my org, all repos.
+  rotation:
+    maxAge: 90d
+  targets:
+    - openbao:
+        mount: secret
+        path: ci/renovate
+        key: token
+  consumers:
+    - "GitHub Actions secret RENOVATE_TOKEN in PedDavid/infra"
