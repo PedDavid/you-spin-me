@@ -24,6 +24,14 @@ jobs:
         run: |
           cargo run --quiet --locked --bin crdgen > /tmp/apikeys.yaml
           diff -u deploy/crds/apikeys.yaml /tmp/apikeys.yaml
+          diff -u deploy/crds/apikeys.yaml deploy/helm/you-spin-me/crds/apikeys.yaml
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: make helm-lint
 
   openbao:
     runs-on: ubuntu-latest

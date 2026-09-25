@@ -1,0 +1,35 @@
+# Access to ApiKeys and their status only. No access to Secrets: keys are
+# written to OpenBao, never to Kubernetes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "ysm.fullname" . }}
+  namespace: {{ include "ysm.apiKeysNamespace" . }}
+  labels:
+    {{- include "ysm.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["you-spin-me.prdv.cloud"]
+    resources: ["apikeys"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["you-spin-me.prdv.cloud"]
+    resources: ["apikeys/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "ysm.fullname" . }}
+  namespace: {{ include "ysm.apiKeysNamespace" . }}
+  labels:
+    {{- include "ysm.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "ysm.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "ysm.fullname" . }}
+    namespace: {{ .Release.Namespace }}
