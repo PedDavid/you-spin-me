@@ -11,7 +11,8 @@ use you_spin_me::config::Config;
 use you_spin_me::demo;
 use you_spin_me::k8s::KubeRepository;
 use you_spin_me::metrics::Metrics;
-use you_spin_me::providers::{NoProbe, ProbeResult, Prober, StaticProber};
+use you_spin_me::providers::http::HttpProber;
+use you_spin_me::providers::{ProbeResult, Prober, StaticProber};
 use you_spin_me::repo::{MemoryRepository, Repository};
 use you_spin_me::rotation::Rotator;
 use you_spin_me::targets::openbao::OpenBao;
@@ -87,7 +88,7 @@ fn stores(cfg: &Config) -> anyhow::Result<Stores> {
             Arc::new(NoStore)
         }
     };
-    Ok((writer, Arc::new(NoProbe)))
+    Ok((writer, Arc::new(HttpProber::new()?)))
 }
 
 fn init_tracing(json: bool) {

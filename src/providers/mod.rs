@@ -59,3 +59,5 @@ impl Prober for StaticProber {
         self.0.clone()
     }
 }
+
+pub mod http;
