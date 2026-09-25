@@ -166,7 +166,15 @@ pub trait Target: Send + Sync {
   path "secret/data/ci/*" { capabilities = ["create", "patch"] }
   # no read, no list, no metadata access
   ```
-  Check-and-set (CAS) is not used, because it would need to read the metadata.
+  The paths are only examples. The app accepts any `mount`/`path` (several mounts
+  are fine) and **the OpenBao policy is the boundary**. Grant only the paths
+  intended for this app: anyone who can merge an `ApiKey` can point the app at a
+  path, and the app would overwrite the key there. That can't leak anything, but
+  it could break another service.
+- Optional `allowedPaths` globs in the Helm values (default: allow everything).
+  They only give earlier feedback: a path outside them sets `Valid=False` when
+  the CR is applied, instead of failing with a 403 during rotation.
+- Check-and-set (CAS) is not used, because it would need to read the metadata.
   The app's policy and ESO's read policy are separate, so the app can never read
   what it wrote.
 - A thin client built on `reqwest` (three endpoints) rather than the `vaultrs`
@@ -366,7 +374,7 @@ Kept a single crate until there is a reason to split it.
 - Rotate dialog, `SecretString` handling, `generic` provider.
 - OpenBao KV v2 target (Kubernetes auth, PATCH with POST fallback), example policy.
 - Example ESO `ExternalSecret` and Reloader setup in `deploy/examples/`.
-- `Valid` condition checks (target path within the allowed prefixes), CSRF and CSP hardening.
+- `Valid` condition checks (target path matches `allowedPaths`), CSRF and CSP hardening.
 - Tests: target against an OpenBao dev server in CI, a check that the policy
   denies reads, and a check that the key value never appears in logs.
 
@@ -385,6 +393,3 @@ Kept a single crate until there is a reason to split it.
    consumers (watching every namespace needs a ClusterRole for `apikeys`).
 3. **Default `warnBefore`** (proposal: 14 days) and whether `critical` should fire
    before the deadline, e.g. at 3 days.
-4. **OpenBao layout.** One mount with a fixed prefix for everything this app
-   writes (e.g. `secret/data/api-keys/*`, simplest policy), or arbitrary paths
-   listed in the Helm values?
