@@ -7,5 +7,6 @@ pub mod metrics;
 pub mod repo;
 pub mod rotation;
 pub mod schedule;
+pub mod targets;
 pub mod validation;
 pub mod web;
