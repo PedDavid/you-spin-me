@@ -3,8 +3,9 @@
 A self-hosted, Kubernetes-native inventory of external API keys: what each key
 is for, how it is set up, when it expires, where to renew it and where it has to
 be updated. It never stores or reads keys back. On rotation it passes the new
-key once through to the configured secret stores (Kubernetes Secrets, OpenBao)
-and forgets it. Expiry is exported as Prometheus metrics, so alerting lives in
+key once through to OpenBao and forgets it. Kubernetes workloads get the key
+from OpenBao through the External Secrets Operator (or similar), never from this
+app. Expiry is exported as Prometheus metrics, so alerting lives in
 Alertmanager, next to everything else.
 
 ## 1. Decisions so far
@@ -15,6 +16,7 @@ Alertmanager, next to everything else.
 | Platform | Kubernetes only |
 | Inventory (source of truth) | A git repo of `ApiKey` custom resources, applied by GitOps (Argo CD / Flux) |
 | Rotation state | CRD `.status`, written by the app. Nothing is stored in OpenBao metadata or Secret annotations |
+| Storage target | OpenBao KV v2 only. No Kubernetes Secret adapter: the app has no RBAC on `secrets` at all, and ESO syncs OpenBao into Kubernetes Secrets |
 | Key handling | Strictly write-only. The app never reads keys back from any store. On submit it may call the provider's API **once** to detect expiry or validate the key |
 | Auth | OIDC login. Everyone who logs in can view; only admins (group claim) can rotate or edit state |
 | Language | Rust |
@@ -39,11 +41,13 @@ Alertmanager, next to everything else.
    │  • axum: UI + /metrics + health │  probe ┌───────────────┐
    │  • rotation service ────────────┼──────▶ │ GitHub, CF, … │
    └───────┬─────────────────┬───────┘  once  └───────────────┘
-           │ patch one key   │ KV v2 PATCH
-           ▼                 ▼
-   Kubernetes Secret     OpenBao KV v2          Prometheus ◀── /metrics
-   (target namespaces)   (write-only policy)         │
-                                                Alertmanager
+                   │ KV v2 PATCH (write-only policy)
+                   ▼
+             OpenBao KV v2                      Prometheus ◀── /metrics
+                   │ read (ESO's own policy)         │
+                   ▼                            Alertmanager
+      External Secrets Operator ──▶ Kubernetes Secret ──▶ workloads
+                                    (Reloader restarts them)
 ```
 
 - **One replica.** Writes happen only when an admin takes an action, so there is
@@ -79,14 +83,12 @@ spec:
     maxAge: 90d                 # optional policy → rotateBy = lastRotated + maxAge
     warnBefore: 14d             # per-key alert threshold (exported as a metric)
   targets:                      # written automatically on rotation
-    - kubernetesSecret:
-        namespace: renovate
-        name: renovate-env
-        key: RENOVATE_TOKEN
     - openbao:
         mount: secret
         path: ci/renovate
         key: token
+  # Kubernetes consumers are wired up outside this app, e.g. an ExternalSecret
+  # reading secret/ci/renovate#token into the renovate namespace.
   consumers:                    # places to update by hand, shown as a checklist
     - "GitHub Actions secret RENOVATE_TOKEN in PedDavid/infra"
 status:                         # written only by the app
@@ -99,7 +101,7 @@ status:                         # written only by the app
     at: "2026-09-20T10:12:00Z"
     identity: "PedDavid"              # e.g. token owner, never the key itself
   targets:
-    - ref: kubernetesSecret/renovate/renovate-env#RENOVATE_TOKEN
+    - ref: openbao/secret/ci/renovate#token
       lastWritten: "2026-09-20T10:12:01Z"
       result: ok                      # ok | failed
       message: ""
@@ -154,36 +156,37 @@ pub trait Target: Send + Sync {
 }
 ```
 
-**Kubernetes Secret**
-- Sends a JSON merge patch that changes only `data.<key>`, so other keys in the
-  Secret are left alone.
-- RBAC: `patch` restricted with `resourceNames` to the listed Secrets, and no
-  `get`/`list`/`watch`. The Helm chart generates one Role per target namespace from
-  its values. Since `create` cannot be restricted by name, **the target Secret
-  must already exist**. An opt-in `allowCreate` per namespace grants `create`.
-- Known leak: the response to a `patch` contains the whole object, including
-  `data`. The client discards it without deserializing `data`. RBAC can't prevent
-  this, so it is documented.
-- GitOps catch: if the target Secret is managed by Argo CD or Flux, they will
-  revert its `data`. Either create it outside GitOps or configure
-  `ignoreDifferences` on `/data`. The docs will cover this, and the `Valid`
-  condition warns when it can detect it.
-- Restarting consumers is out of scope. Document using Stakater Reloader (or
-  similar) on the consuming workloads.
-
 **OpenBao KV v2**
 - Authenticates with the Kubernetes auth method (the projected ServiceAccount token).
 - Writes with `PATCH /v1/<mount>/data/<path>`, so other keys at that path are kept.
-  The response only contains version metadata.
+  The response only contains version metadata. If the path does not exist yet
+  (404), the app falls back to `POST` to create it.
 - Policy (shipped as an example):
   ```hcl
   path "secret/data/ci/*" { capabilities = ["create", "patch"] }
   # no read, no list, no metadata access
   ```
-  If a path does not exist yet, the first write uses `create`. Check-and-set (CAS)
-  is not used, because it would need to read the metadata.
+  Check-and-set (CAS) is not used, because it would need to read the metadata.
+  The app's policy and ESO's read policy are separate, so the app can never read
+  what it wrote.
 - A thin client built on `reqwest` (three endpoints) rather than the `vaultrs`
   crate, to keep dependencies small and control exactly what gets deserialized.
+
+**Why there is no Kubernetes Secret target**
+- A Kubernetes `patch` response always contains the whole Secret, including
+  `data`, so write access to a Secret is effectively read access. OpenBao gives
+  real write-only access.
+- The app then needs no RBAC on `secrets` in any namespace, and there's no
+  GitOps conflict over who owns a Secret's `data`.
+- The `Target` trait stays, so other write-only stores can be added later.
+
+**Getting the new key to workloads (documented, not implemented)**
+- ESO `ExternalSecret`s read from OpenBao with their own policy. The new key is
+  picked up at the next `refreshInterval`. Expiry alerts give days of warning,
+  so an interval of e.g. 1h is fine.
+- Stakater Reloader (or similar) restarts workloads when their Secret changes.
+- The rotate dialog's checklist ends with *revoke the old key*, to be done once
+  consumers have picked up the new one.
 
 ### 4.2 Expiry probes
 
@@ -217,7 +220,7 @@ pub struct ProbeResult {
 ## 5. Authentication and authorization
 
 - OIDC authorization code flow with PKCE (`openidconnect` crate). Configured with
-  issuer URL, client ID and secret (from a Kubernetes Secret), and redirect URL.
+  issuer URL, client ID and secret (mounted from the app's own Secret), and redirect URL.
 - After login, a small session (`sub`, display name, `is_admin`, expiry) is stored
   in an **encrypted, signed cookie** (`axum-extra` `PrivateCookieJar`), set
   `HttpOnly`, `Secure`, `SameSite=Lax`, with a short lifetime (e.g. 8h). There is
@@ -321,7 +324,7 @@ src/
     store.rs         # reflector cache of ApiKeys
     status.rs        # status patches, Events
   rotation.rs        # probe → targets → status, orchestration
-  targets/{mod,kubernetes,openbao}.rs
+  targets/{mod,openbao}.rs
   providers/{mod,generic,github,cloudflare}.rs
   metrics.rs         # collector computing gauges from the store at scrape time
   web/
@@ -359,13 +362,15 @@ Kept a single crate until there is a reason to split it.
 - Metrics, `PrometheusRule`, ServiceMonitor.
 - *After M1 the app is already a working expiry tracker with alerts.*
 
-**M2 – Rotation through Kubernetes Secrets**
-- Rotate dialog, `SecretString` handling, Kubernetes Secret target, `generic` provider.
-- RBAC generated per target namespace, `Valid` condition checks, CSRF and CSP hardening.
-- Tests: targets against a kind cluster in CI, and a check that the key value never appears in logs.
+**M2 – Rotation through OpenBao**
+- Rotate dialog, `SecretString` handling, `generic` provider.
+- OpenBao KV v2 target (Kubernetes auth, PATCH with POST fallback), example policy.
+- Example ESO `ExternalSecret` and Reloader setup in `deploy/examples/`.
+- `Valid` condition checks (target path within the allowed prefixes), CSRF and CSP hardening.
+- Tests: target against an OpenBao dev server in CI, a check that the policy
+  denies reads, and a check that the key value never appears in logs.
 
-**M3 – OpenBao and probes**
-- OpenBao KV v2 target (Kubernetes auth, PATCH), example policy.
+**M3 – Probes**
 - `github` and `cloudflare` probes, handling mismatches with the manually entered expiry.
 
 **M4 – Polish**
@@ -380,4 +385,6 @@ Kept a single crate until there is a reason to split it.
    consumers (watching every namespace needs a ClusterRole for `apikeys`).
 3. **Default `warnBefore`** (proposal: 14 days) and whether `critical` should fire
    before the deadline, e.g. at 3 days.
-4. **Target Secret creation.** Is "must already exist, opt-in `allowCreate`" acceptable?
+4. **OpenBao layout.** One mount with a fixed prefix for everything this app
+   writes (e.g. `secret/data/api-keys/*`, simplest policy), or arbitrary paths
+   listed in the Helm values?
