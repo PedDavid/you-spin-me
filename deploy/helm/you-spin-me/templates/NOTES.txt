@@ -1,0 +1,13 @@
+you-spin-me is installed.
+
+UI:      {{ .Values.publicUrl }}
+ApiKeys: kubectl -n {{ include "ysm.apiKeysNamespace" . }} get apikeys
+
+{{- if .Values.insecureDevAuth }}
+
+WARNING: insecureDevAuth is on: every visitor is an admin.
+{{- end }}
+{{- if not .Values.openbao.addr }}
+
+openbao.addr is not set: keys with targets cannot be rotated from the UI.
+{{- end }}

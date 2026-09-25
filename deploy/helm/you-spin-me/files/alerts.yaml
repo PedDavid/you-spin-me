@@ -1,0 +1,74 @@
+# Rendered by Helm's `tpl`, so Prometheus' own template expressions are
+# escaped as raw strings in backticks.
+# Warning between warnBefore and criticalBefore, critical inside
+# criticalBefore, so each key has only one of the two firing at a time.
+- alert: ApiKeyExpiringSoon
+  expr: |
+    (youspinme_apikey_deadline_timestamp_seconds - time())
+      < on(namespace, name) youspinme_apikey_warn_before_seconds
+    and (youspinme_apikey_deadline_timestamp_seconds - time())
+      >= on(namespace, name) youspinme_apikey_critical_before_seconds
+  labels:
+    severity: warning
+    {{- with .alertLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    summary: {{`"API key {{ $labels.name }} is due in {{ $value | humanizeDuration }}"`}}
+    description: {{`"Rotate it soon: open the key's page for the renew link and targets."`}}
+    runbook_url: {{ printf "%s/keys/{{ $labels.name }}" .url | quote }}
+- alert: ApiKeyExpiringVerySoon
+  expr: |
+    (youspinme_apikey_deadline_timestamp_seconds - time())
+      < on(namespace, name) youspinme_apikey_critical_before_seconds
+    and (youspinme_apikey_deadline_timestamp_seconds - time()) > 0
+  labels:
+    severity: critical
+    {{- with .alertLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    summary: {{`"API key {{ $labels.name }} is due in {{ $value | humanizeDuration }}"`}}
+    runbook_url: {{ printf "%s/keys/{{ $labels.name }}" .url | quote }}
+- alert: ApiKeyExpired
+  expr: youspinme_apikey_deadline_timestamp_seconds - time() <= 0
+  labels:
+    severity: critical
+    {{- with .alertLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    summary: {{`"API key {{ $labels.name }} is past its deadline"`}}
+    runbook_url: {{ printf "%s/keys/{{ $labels.name }}" .url | quote }}
+- alert: ApiKeyStateUnknown
+  expr: youspinme_apikey_state_known == 0
+  for: 1h
+  labels:
+    severity: info
+    {{- with .alertLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    summary: {{`"API key {{ $labels.name }} has no known deadline"`}}
+    description: "Record its last rotation (and expiry, if any) in the UI."
+    runbook_url: {{ printf "%s/keys/{{ $labels.name }}" .url | quote }}
+- alert: ApiKeyTargetWriteFailed
+  expr: youspinme_apikey_target_healthy == 0
+  labels:
+    severity: warning
+    {{- with .alertLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    summary: {{`"Writing API key {{ $labels.name }} to {{ $labels.target }} failed"`}}
+    runbook_url: {{ printf "%s/keys/{{ $labels.name }}" .url | quote }}
+- alert: YouSpinMeDown
+  expr: absent(up{job=~".*you-spin-me.*"} == 1)
+  for: 15m
+  labels:
+    severity: warning
+    {{- with .alertLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    summary: "you-spin-me is not being scraped; API key expiry alerts are blind"

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: you-spin-me
+description: Inventory, expiry alerts and write-only rotation of external API keys
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/PedDavid/you-spin-me
+sources:
+  - https://github.com/PedDavid/you-spin-me
