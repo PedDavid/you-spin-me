@@ -68,6 +68,13 @@ prometheusRule:
   # Extra labels on every alert (e.g. for routing).
   alertLabels: {}
 
+grafanaDashboard:
+  enabled: false
+  # Namespace watched by the Grafana sidecar (defaults to the release namespace).
+  namespace: ""
+  labels:
+    grafana_dashboard: "1"
+
 resources:
   requests:
     cpu: 10m
