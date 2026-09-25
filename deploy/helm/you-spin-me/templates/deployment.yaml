@@ -74,6 +74,10 @@ spec:
               value: {{ .Values.oidc.adminValue | quote }}
             - name: YSM_SESSION_TTL
               value: {{ .Values.oidc.sessionTtl | quote }}
+            {{- with .Values.oidc.stepUpMaxAge }}
+            - name: YSM_STEP_UP_MAX_AGE
+              value: {{ . | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.openbao.addr }}
             - name: YSM_OPENBAO_ADDR

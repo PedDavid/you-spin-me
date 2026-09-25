@@ -353,3 +353,31 @@ async fn search_returns_matching_keys_for_the_palette() {
         .unwrap();
     assert!(!body(res).await.contains("menuitem"));
 }
+
+#[tokio::test]
+async fn step_up_requires_a_recent_login_to_rotate() {
+    let writer = Arc::new(MemoryWriter::default());
+    let h = harness_args(false, writer.clone(), &["--step-up-max-age", "10m"]);
+    let mut stale = session(true);
+    stale.auth_time = stale.auth_time.map(|t| t - 3600);
+    let cookie = session_cookie(&h.key, &stale);
+    let res = h
+        .app
+        .clone()
+        .oneshot(rotate_request(&cookie, "csrf-token", "value"))
+        .await
+        .unwrap();
+    let html = body(res).await;
+    assert!(html.contains("Please log in again"), "{html}");
+    assert!(html.contains("/auth/login?reauth=1&amp;next=/keys/renovate"));
+    assert!(writer.writes().is_empty());
+
+    let fresh = session_cookie(&h.key, &session(true));
+    let res = h
+        .app
+        .oneshot(rotate_request(&fresh, "csrf-token", "value"))
+        .await
+        .unwrap();
+    assert!(body(res).await.contains("Key rotated"));
+    assert_eq!(writer.writes().len(), 1);
+}

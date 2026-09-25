@@ -148,6 +148,11 @@ renovate-github   github     david   2026-12-19T00:00:00Z   3d        True
   - POSTs require a same-origin `Origin` header and a CSRF token.
   - Responses carry a strict CSP (`script-src 'self'`, no inline scripts or
     eval) and `Cache-Control: no-store`.
+- **Step-up.** With `--step-up-max-age 15m`, rotating a key or recording a
+  rotation needs a login from the last 15 minutes. Otherwise the rotate dialog
+  links to a forced re-login, and recording redirects to one.
+  The login time comes from the ID token's `auth_time` claim; a provider
+  that omits it (or ignores `prompt=login`) cannot satisfy step-up.
 - **Probes.** Provider hosts are fixed in code, so a spec cannot send a key
   anywhere else.
 
@@ -186,7 +191,7 @@ Every flag can also be set with an environment variable; see
 | `--allowed-paths` / `YSM_ALLOWED_PATHS` | `*` | OpenBao path globs for early validation |
 | `--oidc-issuer`, `--oidc-client-id`, `--oidc-client-secret-file` | | |
 | `--admin-claim`, `--admin-value` | `groups`, `you-spin-me-admins` | |
-| `--session-ttl` | `8h` | |
+| `--session-ttl`, `--step-up-max-age` | `8h`, off | |
 | `--cookie-key-file` | random per process | ≥ 64 bytes, raw or base64 |
 | `--openbao-addr`, `--openbao-role`, `--openbao-auth-mount` | —, `you-spin-me`, `kubernetes` | |
 | `--openbao-jwt-file` | `/var/run/secrets/openbao/token` | Projected token for Kubernetes auth |
