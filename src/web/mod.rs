@@ -223,8 +223,11 @@ pub fn router(state: AppState) -> Router {
         .layer(middleware::from_fn_with_state(state.clone(), origin_check))
         .layer(middleware::from_fn(security_headers))
         .layer(DefaultBodyLimit::max(64 * 1024))
-        // Default spans record method and path only: no headers, no bodies.
-        .layer(TraceLayer::new_for_http())
+        // Spans record method and path only: no query strings (the OIDC
+        // callback carries the authorization code), headers or bodies.
+        .layer(TraceLayer::new_for_http().make_span_with(|req: &Request| {
+            tracing::info_span!("http", method = %req.method(), path = %req.uri().path())
+        }))
         .with_state(state)
 }
 
