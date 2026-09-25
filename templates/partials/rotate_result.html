@@ -1,0 +1,51 @@
+{% if !error.is_empty() %}
+<div class="alert" data-variant="destructive" role="alert">
+  {% include "icons/circle-x.svg" %}
+  <h2>Nothing was written</h2>
+  <section>{{ error }}</section>
+</div>
+{% else if let Some(o) = outcome %}
+<div class="flex flex-col gap-3">
+  {% if o.completed %}
+  <div class="alert" role="status">
+    {% include "icons/circle-check.svg" %}
+    <h2>Key rotated</h2>
+    <section>Written to every target and recorded. The key has been cleared from the form.</section>
+  </div>
+  {% else %}
+  <div class="alert" data-variant="destructive" role="alert">
+    {% include "icons/triangle-alert.svg" %}
+    <h2>Some targets failed</h2>
+    <section>The rotation was not recorded. Fix the problem and submit again; the key is still in the form.</section>
+  </div>
+  {% endif %}
+  {% let probe = self.probe_line() %}
+  {% if !probe.is_empty() %}<p class="text-sm text-muted-foreground">{{ probe }}</p>{% endif %}
+  {% if o.expiry_mismatch %}<p class="text-sm text-destructive">The expiry you entered differs from the provider's; the provider's is used.</p>{% endif %}
+  <ul class="flex flex-col gap-1.5 text-sm">
+    {% for t in o.targets %}
+    <li class="flex items-start gap-2 [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0">
+      {% if let Some(err) = t.error %}
+      <span class="text-destructive">{% include "icons/circle-x.svg" %}</span>
+      <span><code class="break-all">{{ t.reference }}</code><br><span class="text-destructive">{{ err }}</span></span>
+      {% else %}
+      <span class="text-(--state-ok)">{% include "icons/circle-check.svg" %}</span>
+      <code class="break-all">{{ t.reference }}</code>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if o.completed %}
+  <div class="rounded-md border p-3 text-sm">
+    <p class="mb-2 font-medium">Still to do</p>
+    <ul class="flex flex-col gap-1.5">
+      {% for c in consumers %}
+      <li><label class="flex items-center gap-2"><input type="checkbox" class="input"> {{ c }}</label></li>
+      {% endfor %}
+      <li><label class="flex items-center gap-2"><input type="checkbox" class="input"> Revoke the old key at the provider once consumers have picked up the new one</label></li>
+    </ul>
+  </div>
+  <div class="flex justify-end"><a class="btn" href="/keys/{{ name }}">Done</a></div>
+  {% endif %}
+</div>
+{% endif %}

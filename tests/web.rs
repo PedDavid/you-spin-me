@@ -1,91 +1,17 @@
 //! HTTP-level tests of the UI router: auth, CSRF, Origin checks and pages.
 
+mod common;
+
 use std::sync::Arc;
 
-use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
-use axum::response::IntoResponse;
-use axum_extra::extract::PrivateCookieJar;
-use axum_extra::extract::cookie::{Cookie, Key};
-use clap::Parser;
-use http_body_util::BodyExt;
 use tower::ServiceExt;
 
-use you_spin_me::config::Config;
-use you_spin_me::crd::{ApiKey, ApiKeySpec};
-use you_spin_me::metrics::Metrics;
-use you_spin_me::repo::{MemoryRepository, Repository};
-use you_spin_me::web::auth::{AuthMode, SESSION_COOKIE, Session};
-use you_spin_me::web::{AppState, router};
-
-const ORIGIN: &str = "http://localhost:8080";
-
-struct Harness {
-    app: Router,
-    repo: Arc<MemoryRepository>,
-    key: Key,
-}
-
-fn harness(dev_auth: bool) -> Harness {
-    let mut args = vec!["you-spin-me"];
-    if dev_auth {
-        args.push("--insecure-dev-auth");
-    } else {
-        args.extend([
-            "--oidc-issuer",
-            "https://idp.example.com",
-            "--oidc-client-id",
-            "you-spin-me",
-        ]);
-    }
-    let cfg = Config::try_parse_from(args).unwrap();
-    let repo = Arc::new(MemoryRepository::new([ApiKey::new(
-        "renovate",
-        ApiKeySpec {
-            display_name: Some("Renovate token".into()),
-            renew_url: Some("https://github.com/settings/tokens".into()),
-            ..Default::default()
-        },
-    )]));
-    let dyn_repo: Arc<dyn Repository> = repo.clone();
-    let metrics = Metrics::new(dyn_repo.clone(), cfg.thresholds());
-    let auth = AuthMode::from_config(&cfg.auth, &cfg.public_url, false).unwrap();
-    let key = Key::generate();
-    let state = AppState::new(cfg, dyn_repo, metrics, auth, key.clone());
-    Harness {
-        app: router(state),
-        repo,
-        key,
-    }
-}
-
-fn session(admin: bool) -> Session {
-    let now = jiff::Timestamp::now().as_second();
-    Session {
-        sub: "u1".into(),
-        name: if admin { "alice" } else { "bob" }.into(),
-        admin,
-        csrf: "csrf-token".into(),
-        auth_time: now,
-        exp: now + 3600,
-    }
-}
-
-/// Encrypts a session exactly as the login callback does.
-fn session_cookie(key: &Key, session: &Session) -> String {
-    let jar = PrivateCookieJar::new(key.clone()).add(Cookie::new(
-        SESSION_COOKIE,
-        serde_json::to_string(session).unwrap(),
-    ));
-    let res = (jar, ()).into_response();
-    let set_cookie = res.headers()[header::SET_COOKIE].to_str().unwrap();
-    set_cookie.split(';').next().unwrap().to_string()
-}
-
-async fn body(res: axum::response::Response) -> String {
-    String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
-}
+use common::*;
+use you_spin_me::repo::Repository;
+use you_spin_me::targets::MemoryWriter;
+use you_spin_me::web::auth::SESSION_COOKIE;
 
 fn record_request(cookie: Option<&str>, origin: Option<&str>, csrf: &str) -> Request<Body> {
     let mut req = Request::post("/keys/renovate/record")
@@ -290,4 +216,48 @@ async fn unknown_key_is_404_and_assets_are_served() {
             .unwrap()
             .contains("javascript")
     );
+}
+
+#[tokio::test]
+async fn rotate_requires_admin() {
+    let h = harness(false);
+    let cookie = session_cookie(&h.key, &session(false));
+    let res = h
+        .app
+        .oneshot(rotate_request(&cookie, "csrf-token", "new"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert!(h.repo.get("renovate").unwrap().status.is_none());
+}
+
+#[tokio::test]
+async fn rotate_errors_are_rendered_into_the_dialog() {
+    let writer = Arc::new(MemoryWriter::default());
+    writer.fail(
+        "openbao/secret/ci/renovate#token",
+        "OpenBao write returned 403: permission denied",
+    );
+    let h = harness_with(false, writer);
+    let cookie = session_cookie(&h.key, &session(true));
+    let res = h
+        .app
+        .clone()
+        .oneshot(rotate_request(&cookie, "csrf-token", "value"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(!res.headers().contains_key("hx-trigger"));
+    let html = body(res).await;
+    assert!(html.contains("Some targets failed"));
+    assert!(html.contains("permission denied"));
+
+    let res = h
+        .app
+        .oneshot(rotate_request(&cookie, "csrf-token", "   "))
+        .await
+        .unwrap();
+    let html = body(res).await;
+    assert!(html.contains("Nothing was written"));
+    assert!(html.contains("the key is empty"));
 }

@@ -23,6 +23,7 @@ use tower_http::trace::TraceLayer;
 use crate::config::Config;
 use crate::metrics::Metrics;
 use crate::repo::Repository;
+use crate::rotation::Rotator;
 use auth::AuthMode;
 
 #[derive(Clone)]
@@ -35,6 +36,7 @@ pub struct Inner {
     pub repo: Arc<dyn Repository>,
     pub metrics: Arc<Metrics>,
     pub auth: AuthMode,
+    pub rotator: Arc<Rotator>,
     pub cookie_key: Key,
     pub asset_version: String,
 }
@@ -45,6 +47,7 @@ impl AppState {
         repo: Arc<dyn Repository>,
         metrics: Arc<Metrics>,
         auth: AuthMode,
+        rotator: Arc<Rotator>,
         cookie_key: Key,
     ) -> Self {
         AppState {
@@ -53,6 +56,7 @@ impl AppState {
                 repo,
                 metrics,
                 auth,
+                rotator,
                 cookie_key,
                 asset_version: asset_version(),
             }),
@@ -210,6 +214,7 @@ pub fn router(state: AppState) -> Router {
         .route("/", get(pages::index))
         .route("/keys/{name}", get(pages::detail))
         .route("/keys/{name}/record", post(pages::record))
+        .route("/keys/{name}/rotate", post(pages::rotate))
         .route("/auth/login", get(auth::login))
         .route("/auth/callback", get(auth::callback))
         .route("/auth/logout", post(auth::logout))
