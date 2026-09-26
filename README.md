@@ -36,8 +36,9 @@ git (ApiKey YAML) ──Argo CD / Flux──▶ ApiKey CRs ◀──watch / writ
   `lastRotated + maxAge`. Keys that never expire still get a deadline from the
   rotation policy.
 - **Rotation.** Open the renew link, create the key, paste it into the rotate
-  dialog. The app then writes the key to every target, records the rotation,
-  and lists what is left to do by hand.
+  dialog. The app can check it with the provider (GitHub, Cloudflare), which
+  also detects the expiry. It then writes the key to every target, records the
+  rotation, and lists what is left to do by hand.
 - **Alerts.** Warning at 14 days, critical at 5 days (both overridable per key),
   plus expired, unknown state and failed target write.
 
@@ -146,6 +147,8 @@ renovate-github   github     david   2026-12-19T00:00:00Z   3d        True
   - POSTs require a same-origin `Origin` header and a CSRF token.
   - Responses carry a strict CSP (`script-src 'self'`, no inline scripts or
     eval) and `Cache-Control: no-store`.
+- **Probes.** Provider hosts are fixed in code, so a spec cannot send a key
+  anywhere else.
 
 ## Metrics
 
@@ -215,3 +218,8 @@ YSM_TEST_OPENBAO_ADDR=http://127.0.0.1:8200 YSM_TEST_OPENBAO_ROOT_TOKEN=root car
 - **Rotation state can be lost.** It lives in `.status`, which is not in git.
   After a cluster rebuild, keys show *unknown* (and alert) until their dates are
   recorded again.
+- **Cloudflare account-owned tokens** can't be checked with the user endpoint,
+  and **GitHub tokens without access to `/user`** (such as GitHub App tokens)
+  get a 403 that can't be told apart from rate limiting. Tick *skip
+  verification* for those.
+- **GitHub expiry** is only detected for personal access tokens.
