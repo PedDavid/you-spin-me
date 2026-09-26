@@ -1,6 +1,6 @@
 //! Checks for an `ApiKey` spec, reported through the `Valid` condition.
 
-use crate::crd::ApiKeySpec;
+use crate::crd::{ApiKeySpec, Lifecycle};
 use crate::duration;
 
 /// Globs for OpenBao target paths, matched against `<mount>/data/<path>` with
@@ -83,6 +83,17 @@ fn glob_match(pattern: &str, path: &str) -> bool {
 /// Returns the problems found in `spec`; empty means valid.
 pub fn validate(spec: &ApiKeySpec, allowed: &PathAllowList) -> Vec<String> {
     let mut problems = Vec::new();
+    if spec.lifecycle == Lifecycle::OnDemand {
+        if !spec.targets.is_empty() {
+            problems
+                .push("lifecycle onDemand: keys are never stored, so targets must be empty".into());
+        }
+        if spec.rotation.max_age.is_some() {
+            problems.push(
+                "lifecycle onDemand: keys have no rotation policy, remove rotation.maxAge".into(),
+            );
+        }
+    }
     let rotation = &spec.rotation;
     for (field, value) in [
         ("rotation.maxAge", &rotation.max_age),
@@ -200,6 +211,21 @@ mod tests {
             ..Default::default()
         };
         assert!(validate(&spec, &PathAllowList::allow_all()).is_empty());
+    }
+
+    #[test]
+    fn on_demand_keys_cannot_be_stored_or_rotated() {
+        let mut spec = ApiKeySpec {
+            lifecycle: Lifecycle::OnDemand,
+            renew_url: Some("https://example.com/new".into()),
+            ..Default::default()
+        };
+        assert!(validate(&spec, &PathAllowList::allow_all()).is_empty());
+        spec.targets = vec![target("secret", "x", "token")];
+        spec.rotation.max_age = Some("30d".into());
+        let text = validate(&spec, &PathAllowList::allow_all()).join("\n");
+        assert!(text.contains("targets must be empty"), "{text}");
+        assert!(text.contains("remove rotation.maxAge"), "{text}");
     }
 
     #[test]

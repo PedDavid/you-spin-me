@@ -12,7 +12,7 @@ use jiff::tz::TimeZone;
 use secrecy::SecretString;
 use serde::Deserialize;
 
-use super::auth::{Admin, AuthMode, Session, User};
+use super::auth::{Admin, AuthMode, CsrfForm, Session, User};
 use super::views::{KeyDetail, KeyRow, fmt_date, state_label};
 use super::{AppError, AppState};
 use crate::rotation::{self, ProbeOutcome, RecordError, RotateOutcome, RotateRequest};
@@ -191,8 +191,10 @@ fn sort_rows(rows: &mut [KeyRow], sort: &str) {
                 .cmp(&b.display_name.to_lowercase())
         }),
         "rotated" => rows.sort_by(|a, b| a.last_rotated.cmp(&b.last_rotated)),
-        // Default: most urgent first, unknown deadlines after known ones.
+        // Default: most urgent first, unknown deadlines after known ones,
+        // on-demand keys last.
         _ => rows.sort_by(|a, b| match (a.deadline, b.deadline) {
+            _ if a.on_demand != b.on_demand => a.on_demand.cmp(&b.on_demand),
             (Some(x), Some(y)) => x.cmp(&y),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
@@ -455,4 +457,31 @@ pub async fn search(
     sort_rows(&mut rows, "");
     rows.truncate(8);
     Ok(Html(SearchResults { q, rows }.render()?).into_response())
+}
+
+/// Audits a click on an on-demand key's Create link. Sent by the browser as a
+/// beacon while the link opens the provider's page in a new tab.
+pub async fn opened(
+    State(state): State<AppState>,
+    User(session): User,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Form(form): Form<CsrfForm>,
+) -> Result<Response, AppError> {
+    session.check_csrf(&headers, form.csrf.as_deref())?;
+    rotation::record_use(
+        state.inner.repo.as_ref(),
+        &name,
+        &session.actor(),
+        Timestamp::now(),
+    )
+    .await
+    .map_err(|e| match e {
+        rotation::UseError::Repo(crate::repo::RepoError::NotFound(_)) => {
+            AppError::NotFound(e.to_string())
+        }
+        rotation::UseError::NotOnDemand(_) => AppError::BadRequest(e.to_string()),
+        rotation::UseError::Repo(_) => AppError::Internal(e.to_string()),
+    })?;
+    Ok(axum::http::StatusCode::NO_CONTENT.into_response())
 }

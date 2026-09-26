@@ -130,7 +130,7 @@ fn gauge(
 
 impl prometheus_client::collector::Collector for KeyCollector {
     fn encode(&self, mut encoder: DescriptorEncoder) -> Result<(), std::fmt::Error> {
-        let rows: Vec<Row> = self
+        let all: Vec<Row> = self
             .repo
             .list()
             .into_iter()
@@ -140,6 +140,10 @@ impl prometheus_client::collector::Collector for KeyCollector {
                 key,
             })
             .collect();
+        // On-demand keys have no deadline: they get the info and last-used
+        // metrics only, so they never trigger deadline or unknown-state alerts.
+        let (on_demand, rows): (Vec<Row>, Vec<Row>) =
+            all.into_iter().partition(|r| r.key.is_on_demand());
 
         {
             let mut info = encoder.encode_descriptor(
@@ -148,8 +152,9 @@ impl prometheus_client::collector::Collector for KeyCollector {
                 None,
                 MetricType::Info,
             )?;
-            for row in &rows {
+            for row in rows.iter().chain(&on_demand) {
                 let mut labels = row.labels.clone();
+                labels.push(("lifecycle", row.key.spec.lifecycle.as_str().to_string()));
                 labels.push(("display_name", row.key.display_name().to_string()));
                 labels.push((
                     "renew_url",
@@ -159,6 +164,19 @@ impl prometheus_client::collector::Collector for KeyCollector {
             }
         }
 
+        gauge(
+            &mut encoder,
+            &on_demand,
+            "youspinme_apikey_last_used_timestamp_seconds",
+            "On-demand keys: when the create page was last opened",
+            |r| {
+                r.key
+                    .status
+                    .as_ref()
+                    .and_then(|s| s.last_used.as_ref())
+                    .map(|t| seconds(t.0))
+            },
+        )?;
         gauge(
             &mut encoder,
             &rows,
@@ -269,7 +287,18 @@ mod tests {
             ..Default::default()
         });
         let unknown = ApiKey::new("unknown", ApiKeySpec::default());
-        let repo: Arc<dyn Repository> = Arc::new(MemoryRepository::new([key, unknown]));
+        let mut adhoc = ApiKey::new(
+            "adhoc",
+            ApiKeySpec {
+                lifecycle: crate::crd::Lifecycle::OnDemand,
+                ..Default::default()
+            },
+        );
+        adhoc.status = Some(ApiKeyStatus {
+            last_used: Some(Time("2026-09-01T00:00:00Z".parse().unwrap())),
+            ..Default::default()
+        });
+        let repo: Arc<dyn Repository> = Arc::new(MemoryRepository::new([key, unknown, adhoc]));
         let metrics = Metrics::new(repo, Thresholds::default());
         metrics.rotation("ok");
         metrics.probe("github", "ok");
@@ -294,6 +323,13 @@ mod tests {
         );
         assert!(
             text.contains(r#"youspinme_rotations_total{result="ok"} 1"#),
+            "{text}"
+        );
+        // On-demand keys: info and last-used only, never state_known = 0.
+        assert!(text.contains(r#"youspinme_apikey_last_used_timestamp_seconds{namespace="",name="adhoc",provider="generic",owner=""} 1788220800"#), "{text}");
+        assert!(text.contains(r#"lifecycle="onDemand""#), "{text}");
+        assert!(
+            !text.contains(r#"youspinme_apikey_state_known{namespace="",name="adhoc""#),
             "{text}"
         );
         assert!(

@@ -16,6 +16,10 @@ spec:
     - jsonPath: .spec.provider
       name: Provider
       type: string
+    - jsonPath: .spec.lifecycle
+      name: Lifecycle
+      priority: 1
+      type: string
     - jsonPath: .spec.owner
       name: Owner
       type: string
@@ -43,6 +47,15 @@ spec:
               displayName:
                 description: Human-friendly name shown in the UI. Defaults to `metadata.name`.
                 nullable: true
+                type: string
+              lifecycle:
+                default: managed
+                description: |-
+                  `managed` keys are stored and rotated; `onDemand` keys are created
+                  when needed and deleted right after, so they have no deadline.
+                enum:
+                - managed
+                - onDemand
                 type: string
               owner:
                 description: Person or team responsible for the key.
@@ -196,6 +209,7 @@ spec:
                       enum:
                       - rotated
                       - recorded
+                      - opened
                       type: string
                   required:
                   - at
@@ -208,6 +222,24 @@ spec:
                 format: date-time
                 nullable: true
                 type: string
+              lastUsed:
+                description: 'On-demand keys: when someone last opened the create page, and who.'
+                format: date-time
+                nullable: true
+                type: string
+              lastUsedBy:
+                description: |-
+                  Who did something. `sub` is the stable OIDC subject and identifies the
+                  person; `name` is only a display label and may change or collide.
+                nullable: true
+                properties:
+                  name:
+                    type: string
+                  sub:
+                    type: string
+                required:
+                - sub
+                type: object
               manualExpiresAt:
                 description: Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.
                 format: date-time

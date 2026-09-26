@@ -4,7 +4,7 @@ use jiff::{SignedDuration, Timestamp};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 
 use crate::crd::{
-    Actor, ApiKey, ApiKeySpec, ApiKeyStatus, ExpirySource, HistoryEntry, HistoryKind,
+    Actor, ApiKey, ApiKeySpec, ApiKeyStatus, ExpirySource, HistoryEntry, HistoryKind, Lifecycle,
     OpenBaoTarget, Provider, RotationPolicy, Setup, TargetResult, TargetSpec, TargetStatus,
 };
 
@@ -34,6 +34,7 @@ struct Sample {
     rotated_days_ago: Option<i64>,
     expires_in_days: Option<i64>,
     target_failed: bool,
+    on_demand: bool,
 }
 
 pub fn sample_keys(now: Timestamp) -> Vec<ApiKey> {
@@ -50,6 +51,7 @@ pub fn sample_keys(now: Timestamp) -> Vec<ApiKey> {
             rotated_days_ago: Some(80),
             expires_in_days: Some(10),
             target_failed: false,
+            on_demand: false,
         },
         Sample {
             name: "cloudflare-ddns",
@@ -63,6 +65,7 @@ pub fn sample_keys(now: Timestamp) -> Vec<ApiKey> {
             rotated_days_ago: Some(360),
             expires_in_days: Some(3),
             target_failed: false,
+            on_demand: false,
         },
         Sample {
             name: "openai-homeassistant",
@@ -76,6 +79,7 @@ pub fn sample_keys(now: Timestamp) -> Vec<ApiKey> {
             rotated_days_ago: Some(20),
             expires_in_days: None,
             target_failed: false,
+            on_demand: false,
         },
         Sample {
             name: "hetzner-backups",
@@ -89,6 +93,7 @@ pub fn sample_keys(now: Timestamp) -> Vec<ApiKey> {
             rotated_days_ago: Some(370),
             expires_in_days: None,
             target_failed: true,
+            on_demand: false,
         },
         Sample {
             name: "tailscale-authkey",
@@ -102,6 +107,21 @@ pub fn sample_keys(now: Timestamp) -> Vec<ApiKey> {
             rotated_days_ago: None,
             expires_in_days: None,
             target_failed: false,
+            on_demand: false,
+        },
+        Sample {
+            name: "github-repo-migration",
+            display: "GitHub – repo migration (on demand)",
+            provider: Provider::Github,
+            renew: "https://github.com/settings/personal-access-tokens/new",
+            permissions: &["administration: write", "contents: write"],
+            max_age: None,
+            targets: vec![],
+            consumers: &[],
+            rotated_days_ago: None,
+            expires_in_days: None,
+            target_failed: false,
+            on_demand: true,
         },
     ];
 
@@ -113,6 +133,11 @@ pub fn sample_keys(now: Timestamp) -> Vec<ApiKey> {
                 ApiKeySpec {
                     display_name: Some(s.display.into()),
                     provider: s.provider,
+                    lifecycle: if s.on_demand {
+                        Lifecycle::OnDemand
+                    } else {
+                        Lifecycle::Managed
+                    },
                     owner: Some("david".into()),
                     renew_url: Some(s.renew.into()),
                     setup: Setup {
@@ -128,6 +153,20 @@ pub fn sample_keys(now: Timestamp) -> Vec<ApiKey> {
                 },
             );
             key.metadata.namespace = Some("demo".into());
+            if s.on_demand {
+                let used = now - days(12);
+                key.status = Some(ApiKeyStatus {
+                    last_used: Some(Time(used)),
+                    last_used_by: Some(Actor::new("demo|david", "david")),
+                    history: vec![HistoryEntry {
+                        at: Time(used),
+                        by: Actor::new("demo|david", "david"),
+                        kind: HistoryKind::Opened,
+                        expires_at: None,
+                    }],
+                    ..Default::default()
+                });
+            }
             if let Some(ago) = s.rotated_days_ago {
                 let rotated = now - days(ago);
                 let expires = s.expires_in_days.map(|d| Time(now + days(d)));
