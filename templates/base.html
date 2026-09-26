@@ -33,6 +33,9 @@
           <span class="dark:hidden">{% include "icons/moon.svg" %}</span>
           <span class="hidden dark:inline">{% include "icons/sun.svg" %}</span>
         </button>
+        <button type="button" class="btn" data-variant="ghost" data-size="icon" data-palette-cycle aria-label="Change colour palette" title="Colour palette">
+          {% include "icons/palette.svg" %}
+        </button>
         <span class="hidden md:inline-flex items-center gap-1 px-2 text-sm text-muted-foreground [&>svg]:size-4">
           {% if layout.admin %}{% include "icons/shield-check.svg" %}{% else %}{% include "icons/user.svg" %}{% endif %}
           {{ layout.user }}
