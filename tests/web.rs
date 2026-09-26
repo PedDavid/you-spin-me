@@ -308,3 +308,26 @@ async fn rotate_errors_are_rendered_into_the_dialog() {
     assert!(html.contains("Nothing was written"));
     assert!(html.contains("the key is empty"));
 }
+
+#[tokio::test]
+async fn unsafe_renew_urls_are_not_rendered_as_links() {
+    use you_spin_me::crd::{ApiKey, ApiKeySpec};
+    let h = harness(true);
+    h.repo.insert(ApiKey::new(
+        "evil",
+        ApiKeySpec {
+            renew_url: Some("javascript:alert(document.cookie)".into()),
+            ..Default::default()
+        },
+    ));
+    for path in ["/", "/keys/evil"] {
+        let res = h
+            .app
+            .clone()
+            .oneshot(Request::get(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let html = body(res).await;
+        assert!(!html.contains("javascript:"), "{path}");
+    }
+}

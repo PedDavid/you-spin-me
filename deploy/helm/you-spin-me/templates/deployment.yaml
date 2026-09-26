@@ -1,0 +1,170 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ysm.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ysm.labels" . | nindent 4 }}
+spec:
+  # One replica: writes only happen on admin actions, so there is nothing to
+  # coordinate, and the reflector cache is per process.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "ysm.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ysm.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "ysm.fullname" . }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: you-spin-me
+          image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: YSM_NAMESPACE
+              value: {{ include "ysm.apiKeysNamespace" . | quote }}
+            - name: YSM_PUBLIC_URL
+              value: {{ required "publicUrl is required" .Values.publicUrl | quote }}
+            - name: YSM_WARN_BEFORE
+              value: {{ .Values.warnBefore | quote }}
+            - name: YSM_CRITICAL_BEFORE
+              value: {{ .Values.criticalBefore | quote }}
+            {{- with .Values.allowedPaths }}
+            - name: YSM_ALLOWED_PATHS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            - name: YSM_COOKIE_KEY_FILE
+              value: /etc/you-spin-me/cookie/cookie-key
+            {{- if .Values.insecureDevAuth }}
+            - name: YSM_INSECURE_DEV_AUTH
+              value: "true"
+            {{- else }}
+            - name: YSM_OIDC_ISSUER
+              value: {{ required "oidc.issuer is required (or set insecureDevAuth for development)" .Values.oidc.issuer | quote }}
+            - name: YSM_OIDC_CLIENT_ID
+              value: {{ .Values.oidc.clientId | quote }}
+            {{- if .Values.oidc.clientSecret.existingSecret }}
+            - name: YSM_OIDC_CLIENT_SECRET_FILE
+              value: /etc/you-spin-me/oidc/{{ .Values.oidc.clientSecret.key }}
+            {{- end }}
+            - name: YSM_OIDC_SCOPES
+              value: {{ .Values.oidc.scopes | quote }}
+            - name: YSM_ADMIN_CLAIM
+              value: {{ .Values.oidc.adminClaim | quote }}
+            - name: YSM_ADMIN_VALUE
+              value: {{ .Values.oidc.adminValue | quote }}
+            - name: YSM_SESSION_TTL
+              value: {{ .Values.oidc.sessionTtl | quote }}
+            {{- end }}
+            {{- if .Values.openbao.addr }}
+            - name: YSM_OPENBAO_ADDR
+              value: {{ .Values.openbao.addr | quote }}
+            - name: YSM_OPENBAO_AUTH_MOUNT
+              value: {{ .Values.openbao.authMount | quote }}
+            - name: YSM_OPENBAO_ROLE
+              value: {{ .Values.openbao.role | quote }}
+            - name: YSM_OPENBAO_JWT_FILE
+              value: /var/run/secrets/openbao/token
+            {{- if .Values.openbao.caConfigMap }}
+            - name: YSM_OPENBAO_CA_FILE
+              value: /etc/you-spin-me/openbao-ca/ca.crt
+            {{- end }}
+            {{- end }}
+            {{- if .Values.logJson }}
+            - name: YSM_LOG_JSON
+              value: "true"
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: metrics
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: cookie-key
+              mountPath: /etc/you-spin-me/cookie
+              readOnly: true
+            {{- if and (not .Values.insecureDevAuth) .Values.oidc.clientSecret.existingSecret }}
+            - name: oidc
+              mountPath: /etc/you-spin-me/oidc
+              readOnly: true
+            {{- end }}
+            {{- if .Values.openbao.addr }}
+            - name: openbao-token
+              mountPath: /var/run/secrets/openbao
+              readOnly: true
+            {{- if .Values.openbao.caConfigMap }}
+            - name: openbao-ca
+              mountPath: /etc/you-spin-me/openbao-ca
+              readOnly: true
+            {{- end }}
+            {{- end }}
+      volumes:
+        - name: cookie-key
+          secret:
+            secretName: {{ include "ysm.cookieSecretName" . }}
+        {{- if and (not .Values.insecureDevAuth) .Values.oidc.clientSecret.existingSecret }}
+        - name: oidc
+          secret:
+            secretName: {{ .Values.oidc.clientSecret.existingSecret }}
+        {{- end }}
+        {{- if .Values.openbao.addr }}
+        # Short-lived token bound to this pod, for OpenBao's Kubernetes auth.
+        - name: openbao-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: {{ .Values.openbao.audience }}
+                  expirationSeconds: 3600
+        {{- if .Values.openbao.caConfigMap }}
+        - name: openbao-ca
+          configMap:
+            name: {{ .Values.openbao.caConfigMap }}
+        {{- end }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

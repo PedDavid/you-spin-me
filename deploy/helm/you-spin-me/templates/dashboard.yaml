@@ -1,0 +1,14 @@
+{{- if .Values.grafanaDashboard.enabled }}
+# Picked up by the Grafana dashboard sidecar (e.g. kube-prometheus-stack).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ysm.fullname" . }}-dashboard
+  namespace: {{ default .Release.Namespace .Values.grafanaDashboard.namespace }}
+  labels:
+    {{- include "ysm.labels" . | nindent 4 }}
+    {{- toYaml .Values.grafanaDashboard.labels | nindent 4 }}
+data:
+  you-spin-me.json: |-
+{{ .Files.Get "files/dashboard.json" | indent 4 }}
+{{- end }}

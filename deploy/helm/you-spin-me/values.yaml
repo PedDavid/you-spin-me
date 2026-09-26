@@ -1,0 +1,90 @@
+image:
+  repository: ghcr.io/peddavid/you-spin-me
+  tag: ""  # defaults to the chart appVersion
+  pullPolicy: IfNotPresent
+
+# Public URL of the UI (OIDC redirect, Origin checks, links in alerts).
+publicUrl: https://keys.example.com
+
+# Namespace holding the ApiKey resources. Defaults to the release namespace.
+apiKeysNamespace: ""
+
+# Default alert thresholds (each ApiKey can override them).
+warnBefore: 14d
+criticalBefore: 5d
+
+# OpenBao path globs (<mount>/data/<path>, policy syntax) that targets may
+# use. Early feedback only: the OpenBao policy is the real boundary.
+allowedPaths: []
+
+oidc:
+  issuer: ""            # e.g. https://auth.example.com/application/o/you-spin-me/
+  clientId: you-spin-me
+  # Secret holding the client secret (leave empty for public clients).
+  clientSecret:
+    existingSecret: ""
+    key: client-secret
+  scopes: "profile email groups"
+  adminClaim: groups
+  adminValue: you-spin-me-admins
+  sessionTtl: 8h
+
+# Key encrypting session cookies. Generated once and kept across upgrades
+# unless an existing Secret (with key `cookie-key`, >= 64 bytes) is given.
+cookieKey:
+  existingSecret: ""
+
+openbao:
+  addr: ""              # e.g. https://openbao.openbao.svc:8200
+  authMount: kubernetes
+  role: you-spin-me
+  # Audience of the projected ServiceAccount token (must match the role).
+  audience: openbao
+  # ConfigMap with an extra CA bundle (key ca.crt) for OpenBao's certificate.
+  caConfigMap: ""
+
+# Development only: every visitor is an admin.
+insecureDevAuth: false
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: keys.example.com
+  tls: []
+
+serviceMonitor:
+  enabled: false
+  interval: 60s
+  labels: {}
+
+prometheusRule:
+  enabled: false
+  labels: {}
+  # Extra labels on every alert (e.g. for routing).
+  alertLabels: {}
+
+grafanaDashboard:
+  enabled: false
+  # Namespace watched by the Grafana sidecar (defaults to the release namespace).
+  namespace: ""
+  labels:
+    grafana_dashboard: "1"
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
+
+logJson: true
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

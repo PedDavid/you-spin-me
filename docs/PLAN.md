@@ -33,7 +33,7 @@ Alertmanager, next to everything else.
    │  ApiKey CRs (spec from git,    │
    │  status written by app)        │
    └──────┬─────────────────▲───────┘
-    watch │                 │ patch apikeys/status
+    watch │                 │ write apikeys/status
           ▼                 │
    ┌─────────────────────────────────┐        ┌───────────────┐
    │ you-spin-me (single binary)     │──────▶ │ OIDC provider │
@@ -119,7 +119,9 @@ status:                         # written only by the app
 
 Notes:
 - The CRD **must** use the `status` subresource, so GitOps applies of `spec`
-  never overwrite `.status` and the app only needs `patch` on `apikeys/status`.
+  never overwrite `.status`, and the app only needs `update`/`patch` on
+  `apikeys/status`. Rotation writes replace the status with the object's
+  `resourceVersion`, so concurrent writes conflict instead of being lost.
   Argo CD and Flux both ignore `.status` differences.
 - The effective **deadline** is `min(expiresAt, lastRotated + maxAge)`. Keys that
   never expire still get a deadline from `maxAge`.
@@ -260,7 +262,7 @@ updates, and Lucide icons are inline SVG. Every asset is embedded in the binary.
   run on the server through `hx-get`, with `hx-push-url` so filtered views can be
   linked.
 
-**Key detail (`/keys/{namespace}/{name}`)**
+**Key detail (`/keys/{name}`)**
 - Setup and permissions, notes, renew link, targets with the result of the last
   write, consumer checklist, rotation history and conditions.
 
@@ -306,17 +308,17 @@ Shipped `PrometheusRule` (Helm-toggleable):
 - alert: ApiKeyExpiringSoon
   expr: |
     (youspinme_apikey_deadline_timestamp_seconds - time())
-      < on(namespace, name) youspinme_apikey_warn_before_seconds
+      < youspinme_apikey_warn_before_seconds
     and (youspinme_apikey_deadline_timestamp_seconds - time())
-      >= on(namespace, name) youspinme_apikey_critical_before_seconds
+      >= youspinme_apikey_critical_before_seconds
   labels: { severity: warning }
   annotations:
     summary: "API key {{ $labels.name }} is due in {{ $value | humanizeDuration }}"
-    runbook_url: "https://<app-url>/keys/{{ $labels.namespace }}/{{ $labels.name }}"
+    runbook_url: "https://<app-url>/keys/{{ $labels.name }}"
 - alert: ApiKeyExpiringVerySoon
   expr: |
     (youspinme_apikey_deadline_timestamp_seconds - time())
-      < on(namespace, name) youspinme_apikey_critical_before_seconds
+      < youspinme_apikey_critical_before_seconds
     and (youspinme_apikey_deadline_timestamp_seconds - time()) > 0
   labels: { severity: critical }
 - alert: ApiKeyExpired
@@ -372,6 +374,8 @@ Main crates: `tokio`, `axum`, `axum-extra`, `tower-http`, `askama`, `kube`
 Kept a single crate until there is a reason to split it.
 
 ## 9. Milestones
+
+Status: M0–M4 are implemented. See the README for usage.
 
 **M0 – Skeleton**
 - Cargo project, CI (fmt, clippy `-D warnings`, tests, CRD drift check), Dockerfile, Helm chart skeleton.
