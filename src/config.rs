@@ -99,7 +99,8 @@ pub struct AuthConfig {
     #[arg(long, env = "YSM_SESSION_TTL", default_value = "8h", value_parser = parse_duration)]
     pub session_ttl: SignedDuration,
 
-    /// If set, rotating requires a login no older than this (step-up auth).
+    /// If set, recording or rotating a key requires a login no older than
+    /// this (step-up auth).
     #[arg(long, env = "YSM_STEP_UP_MAX_AGE", value_parser = parse_duration)]
     pub step_up_max_age: Option<SignedDuration>,
 

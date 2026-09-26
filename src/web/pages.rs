@@ -231,6 +231,7 @@ pub async fn detail(
     let detail = KeyDetail::new(&key, state.inner.cfg.thresholds(), now);
     let notice = match q.notice.as_str() {
         "recorded" => "Rotation recorded.",
+        "reauth" => "You logged in again. Record the rotation once more.",
         _ => "",
     };
     Ok(Html(
@@ -279,6 +280,14 @@ pub async fn record(
 ) -> Result<Response, AppError> {
     session.check_csrf(&headers, form.csrf.as_deref())?;
     let now = Timestamp::now();
+    if !session.fresh_enough(state.inner.cfg.auth.step_up_max_age, now) {
+        let next = format!("/keys/{}?notice=reauth", urlencode(&name));
+        return Ok(Redirect::to(&format!(
+            "/auth/login?reauth=true&next={}",
+            urlencode(&next)
+        ))
+        .into_response());
+    }
     let rotated_at = match parse_date(&form.rotated_at)? {
         // Recording "today" means now, so the deadline is exact.
         Some(d) if fmt_date(d) == fmt_date(now) => now,

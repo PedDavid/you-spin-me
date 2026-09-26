@@ -28,7 +28,12 @@ struct Harness {
 }
 
 fn harness(dev_auth: bool) -> Harness {
+    harness_args(dev_auth, &[])
+}
+
+fn harness_args(dev_auth: bool, extra: &[&str]) -> Harness {
     let mut args = vec!["you-spin-me"];
+    args.extend(extra);
     if dev_auth {
         args.push("--insecure-dev-auth");
     } else {
@@ -242,6 +247,46 @@ async fn admin_can_record_rotation() {
         "2026-12-31T00:00:00Z"
     );
     assert_eq!(h.repo.events()[0].1.reason, "Recorded");
+}
+
+#[tokio::test]
+async fn recording_needs_a_recent_login_with_step_up() {
+    let h = harness_args(false, &["--step-up-max-age", "15m"]);
+    let mut stale = session(true);
+    stale.auth_time -= 16 * 60;
+    let res = h
+        .app
+        .clone()
+        .oneshot(record_request(
+            Some(&session_cookie(&h.key, &stale)),
+            Some(ORIGIN),
+            "csrf-token",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        res.headers()[header::LOCATION],
+        "/auth/login?reauth=true&next=%2Fkeys%2Frenovate%3Fnotice%3Dreauth"
+    );
+    assert!(h.repo.get("renovate").unwrap().status.is_none());
+    assert!(h.repo.events().is_empty());
+
+    let fresh = session(true);
+    let res = h
+        .app
+        .oneshot(record_request(
+            Some(&session_cookie(&h.key, &fresh)),
+            Some(ORIGIN),
+            "csrf-token",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        res.headers()[header::LOCATION],
+        "/keys/renovate?notice=recorded"
+    );
+    assert!(h.repo.get("renovate").unwrap().status.is_some());
 }
 
 #[tokio::test]
