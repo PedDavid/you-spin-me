@@ -1,0 +1,15 @@
+# A key with no targets: tracked only, dates recorded by hand in the UI.
+apiVersion: you-spin-me.prdv.cloud/v1alpha1
+kind: ApiKey
+metadata:
+  name: cloudflare-ddns
+  namespace: you-spin-me
+spec:
+  displayName: Cloudflare – DDNS on the router
+  provider: cloudflare
+  owner: david
+  renewUrl: https://dash.cloudflare.com/profile/api-tokens
+  setup:
+    permissions: ["Zone.DNS: edit (prdv.cloud)"]
+  consumers:
+    - "Router web UI → Dynamic DNS"
