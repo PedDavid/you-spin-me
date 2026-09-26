@@ -203,7 +203,11 @@ impl KeyDetail {
             max_age: key.spec.rotation.max_age.clone().unwrap_or_default(),
             warn_before: humanize(schedule.thresholds.warn_before),
             critical_before: humanize(schedule.thresholds.critical_before),
-            rotated_by: status.rotated_by.clone().unwrap_or_default(),
+            rotated_by: status
+                .rotated_by
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default(),
             last_rotated_date: schedule.last_rotated.map(fmt_datetime).unwrap_or_default(),
             probe_identity: probe.and_then(|p| p.identity.clone()).unwrap_or_default(),
             probe_expiry: probe_expiry.map(fmt_date).unwrap_or_default(),
@@ -215,7 +219,7 @@ impl KeyDetail {
                 .iter()
                 .map(|h| HistoryRow {
                     at: fmt_datetime(h.at.0),
-                    by: h.by.clone(),
+                    by: h.by.to_string(),
                     kind: match h.kind {
                         HistoryKind::Rotated => "Rotated",
                         HistoryKind::Recorded => "Recorded",

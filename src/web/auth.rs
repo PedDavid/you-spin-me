@@ -24,6 +24,7 @@ use tracing::{info, warn};
 
 use super::{AppError, AppState};
 use crate::config::AuthConfig;
+use crate::crd::Actor;
 
 pub const SESSION_COOKIE: &str = "ysm_session";
 const LOGIN_COOKIE: &str = "ysm_login";
@@ -45,6 +46,12 @@ pub struct Session {
 impl Session {
     pub fn is_expired(&self, now: Timestamp) -> bool {
         now.as_second() >= self.exp
+    }
+
+    /// The identity recorded in status, history and Events: the stable
+    /// subject, with the name only as a label.
+    pub fn actor(&self) -> Actor {
+        Actor::new(&self.sub, &self.name)
     }
 
     /// True if the last login is recent enough for step-up protected actions.

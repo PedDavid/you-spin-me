@@ -170,7 +170,7 @@ pub struct ApiKeyStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_rotated: Option<Time>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rotated_by: Option<String>,
+    pub rotated_by: Option<Actor>,
     /// Effective expiry: the probed value if there is one, otherwise the manual one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<Time>,
@@ -235,10 +235,40 @@ pub enum TargetResult {
 #[serde(rename_all = "camelCase")]
 pub struct HistoryEntry {
     pub at: Time,
-    pub by: String,
+    pub by: Actor,
     pub kind: HistoryKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<Time>,
+}
+
+/// Who did something. `sub` is the stable OIDC subject and identifies the
+/// person; `name` is only a display label and may change or collide.
+#[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Actor {
+    pub sub: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+}
+
+impl Actor {
+    pub fn new(sub: impl Into<String>, name: impl Into<String>) -> Self {
+        Actor {
+            sub: sub.into(),
+            name: name.into(),
+        }
+    }
+}
+
+/// The display name, or the subject when there is none.
+impl std::fmt::Display for Actor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.name.is_empty() {
+            f.write_str(&self.sub)
+        } else {
+            f.write_str(&self.name)
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq, JsonSchema)]

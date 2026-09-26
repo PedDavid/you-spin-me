@@ -289,7 +289,7 @@ pub async fn record(
     rotation::record(
         state.inner.repo.as_ref(),
         &name,
-        &session.name,
+        &session.actor(),
         rotated_at,
         expires_at,
         now,

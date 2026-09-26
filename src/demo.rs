@@ -4,8 +4,8 @@ use jiff::{SignedDuration, Timestamp};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 
 use crate::crd::{
-    ApiKey, ApiKeySpec, ApiKeyStatus, ExpirySource, HistoryEntry, HistoryKind, OpenBaoTarget,
-    Provider, RotationPolicy, Setup, TargetResult, TargetSpec, TargetStatus,
+    Actor, ApiKey, ApiKeySpec, ApiKeyStatus, ExpirySource, HistoryEntry, HistoryKind,
+    OpenBaoTarget, Provider, RotationPolicy, Setup, TargetResult, TargetSpec, TargetStatus,
 };
 
 fn days(n: i64) -> SignedDuration {
@@ -133,7 +133,7 @@ pub fn sample_keys(now: Timestamp) -> Vec<ApiKey> {
                 let expires = s.expires_in_days.map(|d| Time(now + days(d)));
                 key.status = Some(ApiKeyStatus {
                     last_rotated: Some(Time(rotated)),
-                    rotated_by: Some("david".into()),
+                    rotated_by: Some(Actor::new("demo|david", "david")),
                     expires_at_source: Some(if expires.is_some() {
                         ExpirySource::Manual
                     } else {
@@ -159,7 +159,7 @@ pub fn sample_keys(now: Timestamp) -> Vec<ApiKey> {
                         .collect(),
                     history: vec![HistoryEntry {
                         at: Time(rotated),
-                        by: "david".into(),
+                        by: Actor::new("demo|david", "david"),
                         kind: if s.targets.is_empty() {
                             HistoryKind::Recorded
                         } else {

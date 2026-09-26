@@ -13,7 +13,7 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 use you_spin_me::config::Config;
-use you_spin_me::crd::{ApiKey, ApiKeySpec};
+use you_spin_me::crd::{Actor, ApiKey, ApiKeySpec};
 use you_spin_me::metrics::Metrics;
 use you_spin_me::repo::{MemoryRepository, Repository};
 use you_spin_me::web::auth::{AuthMode, SESSION_COOKIE, Session};
@@ -234,7 +234,9 @@ async fn admin_can_record_rotation() {
         "/keys/renovate?notice=recorded"
     );
     let status = h.repo.get("renovate").unwrap().status.clone().unwrap();
-    assert_eq!(status.rotated_by.as_deref(), Some("alice"));
+    // The audit identity is the stable subject; the name is only a label.
+    assert_eq!(status.rotated_by, Some(Actor::new("u1", "alice")));
+    assert_eq!(status.history[0].by.sub, "u1");
     assert_eq!(
         status.expires_at.unwrap().0.to_string(),
         "2026-12-31T00:00:00Z"
