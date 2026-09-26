@@ -116,7 +116,7 @@ pub async fn index(
     headers: HeaderMap,
     Query(filters): Query<Filters>,
 ) -> Result<Response, AppError> {
-    let now = Timestamp::now();
+    let now = state.now();
     let thresholds = state.inner.cfg.thresholds();
     let all: Vec<KeyRow> = state
         .inner
@@ -232,7 +232,7 @@ pub async fn detail(
         .repo
         .get(&name)
         .ok_or_else(|| AppError::NotFound(format!("no API key named {name:?}")))?;
-    let now = Timestamp::now();
+    let now = state.now();
     let detail = KeyDetail::new(&key, state.inner.cfg.thresholds(), now);
     let notice = match q.notice.as_str() {
         "recorded" => "Rotation recorded.",
@@ -443,7 +443,7 @@ pub async fn search(
     User(_): User,
     Query(query): Query<SearchQuery>,
 ) -> Result<Response, AppError> {
-    let now = Timestamp::now();
+    let now = state.now();
     let thresholds = state.inner.cfg.thresholds();
     let q = query.q.trim().to_string();
     let mut rows: Vec<KeyRow> = state

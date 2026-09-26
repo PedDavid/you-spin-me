@@ -2,7 +2,7 @@
 # https://github.com/tailwindlabs/tailwindcss/releases/tag/v4.3.3
 TAILWIND ?= tailwindcss
 
-.PHONY: css crd check demo helm-lint
+.PHONY: css crd check demo helm-lint visual visual-update visual-browsers
 
 css: ## Rebuild assets/dist/app.css from assets/app.css and the templates
 	$(TAILWIND) -i assets/app.css -o assets/dist/app.css --minify
@@ -15,6 +15,15 @@ check: ## What CI runs
 	cargo fmt --check
 	cargo clippy --all-targets --locked -- -D warnings
 	cargo test --locked
+
+visual: ## Screenshot tests in Chromium against tests/screenshots/
+	cargo test --locked --test visual -- --ignored
+
+visual-update: ## Rewrite tests/screenshots/ (keep only images rendered on CI)
+	UPDATE_SNAPSHOTS=1 cargo test --locked --test visual -- --ignored
+
+visual-browsers: ## Install the Chromium the Playwright driver expects
+	cargo run --locked --example install-browsers -- chromium
 
 demo: ## Run the UI with sample data and no auth
 	cargo run -- --demo

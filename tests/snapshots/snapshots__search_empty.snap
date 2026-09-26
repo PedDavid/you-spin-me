@@ -1,0 +1,45 @@
+---
+source: tests/snapshots.rs
+expression: html
+---
+
+<div role="group" aria-labelledby="command-keys">
+  <span role="heading" id="command-keys">Most urgent</span>
+  
+  <a role="menuitem" href="/keys/hetzner-backups" class="active">
+    <span class="state-dot" data-state="expired"></span>
+    <span class="truncate">Hetzner – backup box</span>
+    <span class="ms-auto" data-shortcut>Expired · 5d ago</span>
+  </a>
+  
+  <a role="menuitem" href="/keys/cloudflare-ddns">
+    <span class="state-dot" data-state="critical"></span>
+    <span class="truncate">Cloudflare – DDNS</span>
+    <span class="ms-auto" data-shortcut>Critical · in 3d</span>
+  </a>
+  
+  <a role="menuitem" href="/keys/renovate-github">
+    <span class="state-dot" data-state="warning"></span>
+    <span class="truncate">Renovate – GitHub token</span>
+    <span class="ms-auto" data-shortcut>Due soon · in 10d</span>
+  </a>
+  
+  <a role="menuitem" href="/keys/openai-homeassistant">
+    <span class="state-dot" data-state="ok"></span>
+    <span class="truncate">OpenAI – Home Assistant</span>
+    <span class="ms-auto" data-shortcut>OK · in 160d</span>
+  </a>
+  
+  <a role="menuitem" href="/keys/tailscale-authkey">
+    <span class="state-dot" data-state="unknown"></span>
+    <span class="truncate">Tailscale – auth key</span>
+    <span class="ms-auto" data-shortcut>Unknown · —</span>
+  </a>
+  
+  <a role="menuitem" href="/keys/github-repo-migration">
+    <span class="state-dot" data-state="on-demand"></span>
+    <span class="truncate">GitHub – repo migration (on demand)</span>
+    <span class="ms-auto" data-shortcut>On demand · used 12d ago</span>
+  </a>
+  
+</div>

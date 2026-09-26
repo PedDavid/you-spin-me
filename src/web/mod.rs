@@ -17,6 +17,7 @@ use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum_extra::extract::cookie::Key;
+use jiff::Timestamp;
 use rust_embed::RustEmbed;
 use tower_http::trace::TraceLayer;
 
@@ -39,6 +40,8 @@ pub struct Inner {
     pub rotator: Arc<Rotator>,
     pub cookie_key: Key,
     pub asset_version: String,
+    /// Pins the clock the pages render relative dates against (tests only).
+    pub fixed_now: Option<Timestamp>,
 }
 
 impl AppState {
@@ -59,8 +62,22 @@ impl AppState {
                 rotator,
                 cookie_key,
                 asset_version: asset_version(),
+                fixed_now: None,
             }),
         }
+    }
+
+    /// Renders every page as if it were `now`, so output is reproducible.
+    /// Sessions, step-up and recorded rotations keep the real clock.
+    pub fn with_fixed_now(mut self, now: Timestamp) -> Self {
+        Arc::get_mut(&mut self.inner)
+            .expect("fixed_now is set before the state is shared")
+            .fixed_now = Some(now);
+        self
+    }
+
+    fn now(&self) -> Timestamp {
+        self.inner.fixed_now.unwrap_or_else(Timestamp::now)
     }
 }
 

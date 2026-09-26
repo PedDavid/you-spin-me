@@ -40,6 +40,8 @@ time = "0.3"
 [dev-dependencies]
 chrono = "0.4"
 http-body-util = "0.1.5"
+insta = { version = "1.48.0", features = ["filters"] }
+playwright-rs = { version = "=0.18.1", default-features = false, features = ["aws-lc", "route-service", "screenshot-diff"] }
 rand08 = { package = "rand", version = "0.8" }
 rsa = "0.9"
 tower = { version = "0.5.3", features = ["util"] }
