@@ -72,7 +72,7 @@ fn session(admin: bool) -> Session {
         name: if admin { "alice" } else { "bob" }.into(),
         admin,
         csrf: "csrf-token".into(),
-        auth_time: now,
+        auth_time: Some(now),
         exp: now + 3600,
     }
 }
@@ -253,7 +253,7 @@ async fn admin_can_record_rotation() {
 async fn recording_needs_a_recent_login_with_step_up() {
     let h = harness_args(false, &["--step-up-max-age", "15m"]);
     let mut stale = session(true);
-    stale.auth_time -= 16 * 60;
+    stale.auth_time = stale.auth_time.map(|t| t - 20 * 60);
     let res = h
         .app
         .clone()

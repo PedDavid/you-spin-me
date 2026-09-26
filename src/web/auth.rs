@@ -30,6 +30,8 @@ pub const SESSION_COOKIE: &str = "ysm_session";
 const LOGIN_COOKIE: &str = "ysm_login";
 const LOGIN_TTL_SECS: i64 = 600;
 const CSRF_HEADER: &str = "x-csrf-token";
+/// Allowed clock difference between this service and the identity provider.
+const CLOCK_SKEW_SECS: i64 = 60;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Session {
@@ -37,8 +39,10 @@ pub struct Session {
     pub name: String,
     pub admin: bool,
     pub csrf: String,
-    /// Unix seconds of the last interactive login.
-    pub auth_time: i64,
+    /// Unix seconds of the last interactive login, from the ID token's
+    /// `auth_time`. `None` if the provider did not say, which never satisfies
+    /// step-up.
+    pub auth_time: Option<i64>,
     /// Unix seconds after which the session is invalid.
     pub exp: i64,
 }
@@ -58,7 +62,10 @@ impl Session {
     pub fn fresh_enough(&self, max_age: Option<SignedDuration>, now: Timestamp) -> bool {
         match max_age {
             None => true,
-            Some(age) => now.as_second() - self.auth_time <= age.as_secs(),
+            Some(age) => self.auth_time.is_some_and(|t| {
+                let now = now.as_second();
+                t <= now + CLOCK_SKEW_SECS && now - t <= age.as_secs() + CLOCK_SKEW_SECS
+            }),
         }
     }
 
@@ -231,7 +238,35 @@ struct LoginState {
     nonce: String,
     pkce_verifier: String,
     next: String,
+    /// Unix seconds when the login started.
+    started: i64,
     exp: i64,
+    /// A forced re-login (step-up): the ID token must prove it.
+    reauth: bool,
+}
+
+/// The `auth_time` to keep for a new session. A forced re-login must come
+/// back with an `auth_time` from after it started; otherwise the provider
+/// ignored `prompt=login`/`max_age=0` (or does not support them) and the
+/// session must not count as fresh.
+fn login_auth_time(
+    claim: Option<i64>,
+    login: &LoginState,
+    now: Timestamp,
+) -> Result<Option<i64>, AppError> {
+    if login.reauth {
+        let Some(t) = claim else {
+            return Err(AppError::Unauthorized(
+                "the identity provider did not report auth_time, so the re-login cannot be verified".into(),
+            ));
+        };
+        if t < login.started - CLOCK_SKEW_SECS || t > now.as_second() + CLOCK_SKEW_SECS {
+            return Err(AppError::Unauthorized(
+                "the identity provider did not ask you to log in again".into(),
+            ));
+        }
+    }
+    Ok(claim)
 }
 
 #[derive(Deserialize)]
@@ -293,12 +328,15 @@ pub async fn login(
             .set_max_age(std::time::Duration::ZERO);
     }
     let (url, csrf, nonce) = request.url();
+    let now = Timestamp::now().as_second();
     let login_state = LoginState {
         state: csrf.secret().clone(),
         nonce: nonce.secret().clone(),
         pkce_verifier: verifier.secret().clone(),
         next,
-        exp: Timestamp::now().as_second() + LOGIN_TTL_SECS,
+        started: now,
+        exp: now + LOGIN_TTL_SECS,
+        reauth: q.reauth,
     };
     let value =
         serde_json::to_string(&login_state).map_err(|e| AppError::Internal(e.to_string()))?;
@@ -350,7 +388,7 @@ pub async fn callback(
     let token = client
         .exchange_code(AuthorizationCode::new(code))
         .map_err(|e| AppError::Internal(e.to_string()))?
-        .set_pkce_verifier(PkceCodeVerifier::new(login.pkce_verifier))
+        .set_pkce_verifier(PkceCodeVerifier::new(login.pkce_verifier.clone()))
         .request_async(&|r| http_call(http.clone(), r))
         .await
         .map_err(|e| AppError::Unauthorized(format!("token exchange failed: {e}")))?;
@@ -358,7 +396,10 @@ pub async fn callback(
         .id_token()
         .ok_or_else(|| AppError::Unauthorized("provider returned no ID token".into()))?;
     let claims = id_token
-        .claims(&client.id_token_verifier(), &Nonce::new(login.nonce))
+        .claims(
+            &client.id_token_verifier(),
+            &Nonce::new(login.nonce.clone()),
+        )
         .map_err(|e| AppError::Unauthorized(format!("invalid ID token: {e}")))?;
 
     // The signature was verified above, so reading extra claims from the
@@ -376,10 +417,7 @@ pub async fn callback(
                 .map(|n| n.to_string())
         })
         .unwrap_or_else(|| claims.subject().to_string());
-    let auth_time = claims
-        .auth_time()
-        .map(|t| t.timestamp())
-        .unwrap_or(now.as_second());
+    let auth_time = login_auth_time(claims.auth_time().map(|t| t.timestamp()), &login, now)?;
     let ttl = state.inner.cfg.auth.session_ttl.as_secs();
     let session = Session {
         sub: claims.subject().to_string(),
@@ -488,7 +526,7 @@ impl FromRequestParts<AppState> for User {
                 name: "dev-admin".into(),
                 admin: true,
                 csrf: csrf.clone(),
-                auth_time: now.as_second(),
+                auth_time: Some(now.as_second()),
                 exp: now.as_second() + 3600,
             }));
         }
@@ -577,13 +615,56 @@ mod tests {
             name: "a".into(),
             admin: true,
             csrf: "t".into(),
-            auth_time: 9_000,
+            auth_time: Some(9_000),
             exp: 20_000,
         };
+        let age = |secs| Some(SignedDuration::from_secs(secs));
         assert!(s.fresh_enough(None, now));
-        assert!(s.fresh_enough(Some(SignedDuration::from_secs(1_000)), now));
-        assert!(!s.fresh_enough(Some(SignedDuration::from_secs(999)), now));
+        assert!(s.fresh_enough(age(1_000), now));
+        // Within the clock-skew allowance, not beyond it.
+        assert!(s.fresh_enough(age(940), now));
+        assert!(!s.fresh_enough(age(939), now));
         assert!(!s.is_expired(now));
+        // Unknown or future login times never count as fresh.
+        let unknown = Session {
+            auth_time: None,
+            ..s.clone()
+        };
+        assert!(unknown.fresh_enough(None, now));
+        assert!(!unknown.fresh_enough(age(1_000_000), now));
+        let future = Session {
+            auth_time: Some(10_061),
+            ..s
+        };
+        assert!(!future.fresh_enough(age(1_000_000), now));
+    }
+
+    #[test]
+    fn reauth_must_prove_a_fresh_login() {
+        let now = Timestamp::from_second(10_000).unwrap();
+        let login = |reauth| LoginState {
+            state: String::new(),
+            nonce: String::new(),
+            pkce_verifier: String::new(),
+            next: "/".into(),
+            started: 9_900,
+            exp: 10_500,
+            reauth,
+        };
+        // Ordinary logins keep whatever the provider reported.
+        assert_eq!(login_auth_time(None, &login(false), now).unwrap(), None);
+        assert_eq!(
+            login_auth_time(Some(1_000), &login(false), now).unwrap(),
+            Some(1_000)
+        );
+        // A re-login needs auth_time from after it started.
+        assert!(login_auth_time(None, &login(true), now).is_err());
+        assert!(login_auth_time(Some(1_000), &login(true), now).is_err());
+        assert!(login_auth_time(Some(20_000), &login(true), now).is_err());
+        assert_eq!(
+            login_auth_time(Some(9_950), &login(true), now).unwrap(),
+            Some(9_950)
+        );
     }
 
     #[test]
@@ -593,7 +674,7 @@ mod tests {
             name: "a".into(),
             admin: true,
             csrf: "token".into(),
-            auth_time: 0,
+            auth_time: None,
             exp: 1,
         };
         let mut headers = HeaderMap::new();

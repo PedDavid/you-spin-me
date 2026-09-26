@@ -38,6 +38,9 @@ askama_web = { version = "0.16", features = ["axum-0.8"] }
 time = "0.3"
 
 [dev-dependencies]
+chrono = "0.4"
 http-body-util = "0.1.5"
+rand08 = { package = "rand", version = "0.8" }
+rsa = "0.9"
 tower = { version = "0.5.3", features = ["util"] }
 wiremock = "0.6.5"
