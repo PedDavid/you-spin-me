@@ -1,0 +1,24 @@
+---
+source: tests/snapshots.rs
+expression: html
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Not found · you-spin-me</title>
+  <link rel="stylesheet" href="/assets/dist/app.css">
+</head>
+<body class="min-h-screen bg-background text-foreground antialiased grid place-items-center p-4">
+  <div class="card w-full max-w-md">
+    <header>
+      <h2>404 · Not found</h2>
+      <p>no API key named &#34;nope&#34;</p>
+    </header>
+    <footer>
+      <a class="btn" data-variant="outline" href="/">Back to all keys</a>
+    </footer>
+  </div>
+</body>
+</html>

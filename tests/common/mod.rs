@@ -131,3 +131,35 @@ pub fn rotate_request(cookie: &str, csrf: &str, value: &str) -> Request<Body> {
         .body(Body::from(body))
         .unwrap()
 }
+
+/// Every relative date ("in 12d", "3d ago") in the demo app is computed
+/// against this.
+pub const NOW: &str = "2026-09-26T12:00:00Z";
+
+/// The `--demo` app (sample keys, dev auth) frozen at [`NOW`], with a fixed
+/// CSRF token so its pages render byte for byte the same every run.
+pub fn demo_app() -> Router {
+    use you_spin_me::demo;
+    use you_spin_me::providers::{ProbeResult, StaticProber};
+
+    let now: jiff::Timestamp = NOW.parse().unwrap();
+    let cfg = Config::try_parse_from(["you-spin-me", "--demo"]).unwrap();
+    let repo: Arc<dyn Repository> = Arc::new(MemoryRepository::new(demo::sample_keys(now)));
+    let metrics = Metrics::new(repo.clone(), cfg.thresholds());
+    let prober = StaticProber(Ok(Some(ProbeResult {
+        expires_at: Some(now + jiff::SignedDuration::from_hours(90 * 24)),
+        identity: Some("demo-user".into()),
+    })));
+    let rotator = Arc::new(Rotator::new(
+        repo.clone(),
+        Arc::new(MemoryWriter::default()),
+        Arc::new(prober),
+        metrics.clone(),
+        cfg.allowed_paths(),
+    ));
+    let auth = AuthMode::InsecureDev {
+        csrf: "demo-csrf-token".into(),
+    };
+    let state = AppState::new(cfg, repo, metrics, auth, rotator, Key::generate());
+    router(state.with_fixed_now(now))
+}

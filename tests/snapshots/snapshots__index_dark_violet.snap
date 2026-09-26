@@ -1,0 +1,585 @@
+---
+source: tests/snapshots.rs
+expression: html
+---
+<!doctype html>
+<html lang="en" class="dark" data-palette="violet">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="demo-csrf-token">
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
+  <title>API keys · you-spin-me</title>
+  <link rel="stylesheet" href="/assets/dist/app.css?v=[hash]">
+  <link rel="icon" href="/assets/dist/favicon.svg?v=[hash]" type="image/svg+xml">
+  <script src="/assets/vendor/htmx/htmx.min.js?v=[hash]" defer></script>
+  <script src="/assets/js/app.js?v=[hash]" defer></script>
+</head>
+<body class="min-h-screen bg-background text-foreground antialiased" hx-headers='{"X-CSRF-Token": "demo-csrf-token"}'>
+  
+  <div class="bg-destructive text-white text-center text-xs py-1">Insecure dev auth: every visitor is an admin. Do not expose this instance.</div>
+  
+  <header class="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
+    <div class="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
+      <a href="/" class="flex items-center gap-2 font-semibold [&>svg]:size-5">
+        <svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" />
+  <circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />
+</svg>
+        <span>you-spin-me</span>
+      </a>
+      <div class="ms-auto flex items-center gap-1">
+        <button type="button" class="btn hidden sm:inline-flex text-muted-foreground" data-variant="outline" data-size="sm" data-palette-open aria-label="Search keys" aria-keyshortcuts="Control+K Meta+K">
+          <svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" />
+</svg>
+          <span class="pe-4">Search keys…</span>
+          <kbd class="kbd">⌘K</kbd>
+        </button>
+        <button type="button" class="btn sm:hidden" data-variant="ghost" data-size="icon" data-palette-open aria-label="Search keys">
+          <svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" />
+</svg>
+        </button>
+        <button type="button" class="btn" data-variant="ghost" data-size="icon" data-theme-toggle aria-label="Toggle dark mode">
+          <span class="dark:hidden"><svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+</svg></span>
+          <span class="hidden dark:inline"><svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="4" />
+  <path d="M12 2v2" />
+  <path d="M12 20v2" />
+  <path d="m4.93 4.93 1.41 1.41" />
+  <path d="m17.66 17.66 1.41 1.41" />
+  <path d="M2 12h2" />
+  <path d="M20 12h2" />
+  <path d="m6.34 17.66-1.41 1.41" />
+  <path d="m19.07 4.93-1.41 1.41" />
+</svg></span>
+        </button>
+        <button type="button" class="btn" data-variant="ghost" data-size="icon" data-palette-cycle aria-label="Change colour palette" title="Colour palette">
+          <svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" />
+  <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+  <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+  <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+  <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+</svg>
+        </button>
+        <span class="hidden md:inline-flex items-center gap-1 px-2 text-sm text-muted-foreground [&>svg]:size-4">
+          <svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" />
+</svg>
+          dev-admin
+        </span>
+        
+      </div>
+    </div>
+  </header>
+  <main class="mx-auto max-w-6xl px-4 py-6">
+    
+<div class="flex flex-col gap-6">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">API keys</h1>
+      <p class="text-muted-foreground text-sm">What each key is for, when it is due and where it goes.</p>
+    </div>
+  </div>
+
+  <form id="filters" class="flex flex-col gap-3" hx-get="/" hx-target="#keys-table" hx-push-url="true"
+        hx-trigger="input changed delay:250ms from:#q, change">
+    <div id="state-chips" class="flex flex-wrap gap-2" role="group" aria-label="Filter by state">
+  <label class="state-chip" data-active="true">
+    <input type="radio" name="state" value="" class="sr-only" checked>
+    All <span class="text-muted-foreground">6</span>
+  </label>
+  
+  <label class="state-chip" data-state="expired" data-active="false">
+    <input type="radio" name="state" value="expired" class="sr-only" >
+    <span class="state-dot"></span>Expired <span class="text-muted-foreground">1</span>
+  </label>
+  
+  <label class="state-chip" data-state="critical" data-active="false">
+    <input type="radio" name="state" value="critical" class="sr-only" >
+    <span class="state-dot"></span>Critical <span class="text-muted-foreground">1</span>
+  </label>
+  
+  <label class="state-chip" data-state="warning" data-active="false">
+    <input type="radio" name="state" value="warning" class="sr-only" >
+    <span class="state-dot"></span>Due soon <span class="text-muted-foreground">1</span>
+  </label>
+  
+  <label class="state-chip" data-state="unknown" data-active="false">
+    <input type="radio" name="state" value="unknown" class="sr-only" >
+    <span class="state-dot"></span>Unknown <span class="text-muted-foreground">1</span>
+  </label>
+  
+  <label class="state-chip" data-state="ok" data-active="false">
+    <input type="radio" name="state" value="ok" class="sr-only" >
+    <span class="state-dot"></span>OK <span class="text-muted-foreground">1</span>
+  </label>
+  
+  <label class="state-chip" data-state="on-demand" data-active="false">
+    <input type="radio" name="state" value="on-demand" class="sr-only" >
+    <span class="state-dot"></span>On demand <span class="text-muted-foreground">1</span>
+  </label>
+  
+</div>
+    <div class="flex flex-wrap gap-2">
+      <div class="relative grow sm:max-w-xs">
+        <span class="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground [&>svg]:size-4"><svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" />
+</svg></span>
+        <input id="q" class="input ps-8" type="search" name="q" value="" placeholder="Filter by name, owner, provider…" aria-label="Filter">
+      </div>
+      <select class="select" name="provider" aria-label="Provider">
+        <option value="">All providers</option>
+        
+        <option value="cloudflare" >cloudflare</option>
+        
+        <option value="generic" >generic</option>
+        
+        <option value="github" >github</option>
+        
+      </select>
+      <select class="select" name="sort" aria-label="Sort">
+        <option value="" selected>Most urgent first</option>
+        <option value="name" >Name</option>
+        <option value="rotated" >Least recently rotated</option>
+      </select>
+    </div>
+  </form>
+
+  <div id="keys-table">
+    
+<div class="table-container rounded-lg border">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>Status</th>
+        <th>Due</th>
+        <th class="hidden md:table-cell">Last rotated</th>
+        <th class="hidden lg:table-cell">Owner</th>
+        <th class="hidden sm:table-cell">Targets</th>
+        <th class="text-end"><span class="sr-only">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      
+      <tr>
+        <td>
+          <a href="/keys/hetzner-backups" class="font-medium hover:underline">Hetzner – backup box</a>
+          <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>generic</span>
+            
+          </div>
+        </td>
+        <td><span class="badge state-badge" data-state="expired"><span class="state-dot"></span>Expired</span></td>
+        <td>
+          
+          <div title="2026-09-21">5d ago</div>
+          <div class="text-xs text-muted-foreground">max age</div>
+          
+        </td>
+        <td class="hidden md:table-cell text-muted-foreground">370d ago</td>
+        <td class="hidden lg:table-cell text-muted-foreground">david</td>
+        <td class="hidden sm:table-cell">
+          
+          <span class="badge" data-variant="destructive">1 of 1 failed</span>
+          
+        </td>
+        <td class="text-end">
+          
+          
+          <a class="btn" data-variant="ghost" data-size="sm" href="https://console.hetzner.cloud/" target="_blank" rel="noopener noreferrer">
+            Renew <svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+</svg>
+          </a>
+          
+          
+        </td>
+      </tr>
+      
+      <tr>
+        <td>
+          <a href="/keys/cloudflare-ddns" class="font-medium hover:underline">Cloudflare – DDNS</a>
+          <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>cloudflare</span>
+            
+          </div>
+        </td>
+        <td><span class="badge state-badge" data-state="critical"><span class="state-dot"></span>Critical</span></td>
+        <td>
+          
+          <div title="2026-09-29">in 3d</div>
+          <div class="text-xs text-muted-foreground">expiry</div>
+          
+        </td>
+        <td class="hidden md:table-cell text-muted-foreground">360d ago</td>
+        <td class="hidden lg:table-cell text-muted-foreground">david</td>
+        <td class="hidden sm:table-cell">
+          
+          <span class="text-muted-foreground">manual</span>
+          
+        </td>
+        <td class="text-end">
+          
+          
+          <a class="btn" data-variant="ghost" data-size="sm" href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer">
+            Renew <svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+</svg>
+          </a>
+          
+          
+        </td>
+      </tr>
+      
+      <tr>
+        <td>
+          <a href="/keys/renovate-github" class="font-medium hover:underline">Renovate – GitHub token</a>
+          <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>github</span>
+            
+          </div>
+        </td>
+        <td><span class="badge state-badge" data-state="warning"><span class="state-dot"></span>Due soon</span></td>
+        <td>
+          
+          <div title="2026-10-06">in 10d</div>
+          <div class="text-xs text-muted-foreground">expiry</div>
+          
+        </td>
+        <td class="hidden md:table-cell text-muted-foreground">80d ago</td>
+        <td class="hidden lg:table-cell text-muted-foreground">david</td>
+        <td class="hidden sm:table-cell">
+          
+          <span class="text-muted-foreground">1</span>
+          
+        </td>
+        <td class="text-end">
+          
+          
+          <a class="btn" data-variant="ghost" data-size="sm" href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener noreferrer">
+            Renew <svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+</svg>
+          </a>
+          
+          
+        </td>
+      </tr>
+      
+      <tr>
+        <td>
+          <a href="/keys/openai-homeassistant" class="font-medium hover:underline">OpenAI – Home Assistant</a>
+          <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>generic</span>
+            
+          </div>
+        </td>
+        <td><span class="badge state-badge" data-state="ok"><span class="state-dot"></span>OK</span></td>
+        <td>
+          
+          <div title="2027-03-05">in 160d</div>
+          <div class="text-xs text-muted-foreground">max age</div>
+          
+        </td>
+        <td class="hidden md:table-cell text-muted-foreground">20d ago</td>
+        <td class="hidden lg:table-cell text-muted-foreground">david</td>
+        <td class="hidden sm:table-cell">
+          
+          <span class="text-muted-foreground">1</span>
+          
+        </td>
+        <td class="text-end">
+          
+          
+          <a class="btn" data-variant="ghost" data-size="sm" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">
+            Renew <svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+</svg>
+          </a>
+          
+          
+        </td>
+      </tr>
+      
+      <tr>
+        <td>
+          <a href="/keys/tailscale-authkey" class="font-medium hover:underline">Tailscale – auth key</a>
+          <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>generic</span>
+            
+          </div>
+        </td>
+        <td><span class="badge state-badge" data-state="unknown"><span class="state-dot"></span>Unknown</span></td>
+        <td>
+          
+          <div title="">—</div>
+          
+          
+        </td>
+        <td class="hidden md:table-cell text-muted-foreground">never</td>
+        <td class="hidden lg:table-cell text-muted-foreground">david</td>
+        <td class="hidden sm:table-cell">
+          
+          <span class="text-muted-foreground">1</span>
+          
+        </td>
+        <td class="text-end">
+          
+          
+          <a class="btn" data-variant="ghost" data-size="sm" href="https://login.tailscale.com/admin/settings/keys" target="_blank" rel="noopener noreferrer">
+            Renew <svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+</svg>
+          </a>
+          
+          
+        </td>
+      </tr>
+      
+      <tr>
+        <td>
+          <a href="/keys/github-repo-migration" class="font-medium hover:underline">GitHub – repo migration (on demand)</a>
+          <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>github</span>
+            
+          </div>
+        </td>
+        <td><span class="badge state-badge" data-state="on-demand"><span class="state-dot"></span>On demand</span></td>
+        <td>
+          
+          <div class="text-muted-foreground">—</div>
+          <div class="text-xs text-muted-foreground">created when needed</div>
+          
+        </td>
+        <td class="hidden md:table-cell text-muted-foreground">used 12d ago</td>
+        <td class="hidden lg:table-cell text-muted-foreground">david</td>
+        <td class="hidden sm:table-cell">
+          
+          <span class="text-muted-foreground">never stored</span>
+          
+        </td>
+        <td class="text-end">
+          
+          
+          <a class="btn" data-variant="ghost" data-size="sm" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer" data-track-open="/keys/github-repo-migration/opened" title="Opening the create page is recorded">
+            Create <svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+</svg>
+          </a>
+          
+          
+        </td>
+      </tr>
+      
+    </tbody>
+  </table>
+</div>
+
+
+  </div>
+</div>
+
+  </main>
+  
+  <dialog id="command-palette" class="command-dialog" aria-label="Search keys">
+    <div class="command">
+      <header>
+        <svg
+  aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" />
+</svg>
+        <input type="search" name="q" placeholder="Search keys…" autocomplete="off" aria-label="Search keys"
+               hx-get="/search" hx-trigger="input changed delay:150ms, search, palette-open" hx-target="#command-results">
+      </header>
+      <div id="command-results" role="menu" aria-orientation="vertical" data-empty="No keys found."></div>
+    </div>
+  </dialog>
+</body>
+</html>
