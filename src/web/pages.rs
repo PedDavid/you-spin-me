@@ -414,3 +414,38 @@ pub async fn rotate(
         }
     }
 }
+
+#[derive(Deserialize, Default)]
+pub struct SearchQuery {
+    #[serde(default)]
+    q: String,
+}
+
+#[derive(Template)]
+#[template(path = "partials/search_results.html")]
+struct SearchResults {
+    q: String,
+    rows: Vec<KeyRow>,
+}
+
+/// Results for the command palette: matches for `q`, or the most urgent keys.
+pub async fn search(
+    State(state): State<AppState>,
+    User(_): User,
+    Query(query): Query<SearchQuery>,
+) -> Result<Response, AppError> {
+    let now = Timestamp::now();
+    let thresholds = state.inner.cfg.thresholds();
+    let q = query.q.trim().to_string();
+    let mut rows: Vec<KeyRow> = state
+        .inner
+        .repo
+        .list()
+        .iter()
+        .map(|k| KeyRow::new(k, thresholds, now))
+        .filter(|r| q.is_empty() || r.matches(&q))
+        .collect();
+    sort_rows(&mut rows, "");
+    rows.truncate(8);
+    Ok(Html(SearchResults { q, rows }.render()?).into_response())
+}

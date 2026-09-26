@@ -51,6 +51,7 @@ cargo run -- --demo        # http://localhost:8080, sample data, no login
 ```
 
 Demo mode keeps everything in memory and treats every visitor as an admin.
+Press <kbd>⌘K</kbd> or <kbd>/</kbd> to search.
 
 ## Install
 

@@ -331,3 +331,25 @@ async fn unsafe_renew_urls_are_not_rendered_as_links() {
         assert!(!html.contains("javascript:"), "{path}");
     }
 }
+
+#[tokio::test]
+async fn search_returns_matching_keys_for_the_palette() {
+    let h = harness(true);
+    let res = h
+        .app
+        .clone()
+        .oneshot(Request::get("/search?q=renov").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let html = body(res).await;
+    assert!(html.contains(r#"href="/keys/renovate""#));
+    assert!(html.contains("Renovate token"));
+
+    let res = h
+        .app
+        .oneshot(Request::get("/search?q=zzz").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert!(!body(res).await.contains("menuitem"));
+}

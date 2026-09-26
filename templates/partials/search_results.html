@@ -1,0 +1,12 @@
+{% if !rows.is_empty() %}
+<div role="group" aria-labelledby="command-keys">
+  <span role="heading" id="command-keys">{% if q.is_empty() %}Most urgent{% else %}Keys{% endif %}</span>
+  {% for row in rows %}
+  <a role="menuitem" href="/keys/{{ row.name }}"{% if loop.first %} class="active"{% endif %}>
+    <span class="state-dot" data-state="{{ row.state_str() }}"></span>
+    <span class="truncate">{{ row.display_name }}</span>
+    <span class="ms-auto" data-shortcut>{{ row.state_label() }} · {{ row.deadline_rel }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
