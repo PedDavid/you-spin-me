@@ -5,7 +5,7 @@
   <a role="menuitem" href="/keys/{{ row.name }}"{% if loop.first %} class="active"{% endif %}>
     <span class="state-dot" data-state="{{ row.state_str() }}"></span>
     <span class="truncate">{{ row.display_name }}</span>
-    <span class="ms-auto" data-shortcut>{{ row.state_label() }} · {{ row.deadline_rel }}</span>
+    <span class="ms-auto" data-shortcut>{{ row.state_label() }} · {% if row.on_demand %}used {{ row.last_used_rel }}{% else %}{{ row.deadline_rel }}{% endif %}</span>
   </a>
   {% endfor %}
 </div>

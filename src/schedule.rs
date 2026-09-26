@@ -30,6 +30,8 @@ pub enum State {
     Warning,
     Unknown,
     Ok,
+    /// On-demand keys: created when needed, no deadline.
+    OnDemand,
 }
 
 impl State {
@@ -40,6 +42,7 @@ impl State {
             State::Warning => "warning",
             State::Unknown => "unknown",
             State::Ok => "ok",
+            State::OnDemand => "on-demand",
         }
     }
 
@@ -50,16 +53,18 @@ impl State {
             "warning" => State::Warning,
             "unknown" => State::Unknown,
             "ok" => State::Ok,
+            "on-demand" => State::OnDemand,
             _ => return None,
         })
     }
 
-    pub const ALL: [State; 5] = [
+    pub const ALL: [State; 6] = [
         State::Expired,
         State::Critical,
         State::Warning,
         State::Unknown,
         State::Ok,
+        State::OnDemand,
     ];
 }
 
@@ -78,6 +83,8 @@ pub struct Schedule {
     pub rotate_by: Option<Timestamp>,
     pub deadline: Option<(Timestamp, DeadlineKind)>,
     pub thresholds: Thresholds,
+    /// On-demand keys have no deadline and are never due.
+    pub on_demand: bool,
 }
 
 impl Schedule {
@@ -114,8 +121,9 @@ impl Schedule {
             last_rotated,
             expires_at,
             rotate_by,
-            deadline,
+            deadline: if key.is_on_demand() { None } else { deadline },
             thresholds,
+            on_demand: key.is_on_demand(),
         }
     }
 
@@ -124,6 +132,9 @@ impl Schedule {
     }
 
     pub fn state(&self, now: Timestamp) -> State {
+        if self.on_demand {
+            return State::OnDemand;
+        }
         match self.remaining(now) {
             None => State::Unknown,
             Some(r) if r <= SignedDuration::ZERO => State::Expired,
@@ -204,6 +215,15 @@ mod tests {
         assert_eq!(s.state(ts("2026-09-20T00:00:00Z")), State::Warning);
         assert_eq!(s.state(ts("2026-09-27T00:00:00Z")), State::Critical);
         assert_eq!(s.state(ts("2026-10-01T00:00:00Z")), State::Expired);
+    }
+
+    #[test]
+    fn on_demand_keys_have_no_deadline() {
+        let mut k = key(Some("2026-09-02T00:00:00Z"), None, None);
+        k.spec.lifecycle = crate::crd::Lifecycle::OnDemand;
+        let s = Schedule::compute(&k, Thresholds::default());
+        assert_eq!(s.deadline, None);
+        assert_eq!(s.state(ts("2026-10-01T00:00:00Z")), State::OnDemand);
     }
 
     #[test]

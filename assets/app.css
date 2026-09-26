@@ -19,6 +19,7 @@
   [data-state='critical'] { --state: var(--state-critical); }
   [data-state='expired'] { --state: var(--state-expired); }
   [data-state='unknown'] { --state: var(--state-unknown); }
+  [data-state='on-demand'] { --state: var(--state-on-demand); }
 
   .state-dot {
     @apply inline-block size-2 shrink-0 rounded-full bg-(--state,var(--muted-foreground));

@@ -1,0 +1,18 @@
+# A key created for a one-off task and deleted right after: never stored, no
+# deadline, no alerts. Opening its create page from the UI is audited.
+apiVersion: you-spin-me.prdv.cloud/v1alpha1
+kind: ApiKey
+metadata:
+  name: github-repo-migration
+  namespace: you-spin-me
+spec:
+  displayName: GitHub – repo migration
+  lifecycle: onDemand
+  provider: github
+  owner: david
+  renewUrl: https://github.com/settings/personal-access-tokens/new
+  setup:
+    permissions: ["administration: write", "contents: write"]
+    notes: |
+      Fine-grained PAT, 1-day expiry, only the repos being migrated.
+      Delete it as soon as the migration finishes.

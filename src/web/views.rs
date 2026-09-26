@@ -40,6 +40,7 @@ pub fn state_label(state: State) -> &'static str {
         State::Warning => "Due soon",
         State::Unknown => "Unknown",
         State::Ok => "OK",
+        State::OnDemand => "On demand",
     }
 }
 
@@ -60,6 +61,9 @@ pub struct KeyRow {
     pub targets_failed: usize,
     pub renew_url: Option<String>,
     pub valid: bool,
+    pub on_demand: bool,
+    pub last_used_rel: String,
+    pub last_used_by: String,
 }
 
 impl KeyRow {
@@ -101,6 +105,15 @@ impl KeyRow {
             valid: key
                 .condition(VALID_CONDITION)
                 .is_none_or(|c| c.status == "True"),
+            on_demand: key.is_on_demand(),
+            last_used_rel: status
+                .and_then(|s| s.last_used.as_ref())
+                .map(|t| relative(t.0, now))
+                .unwrap_or_else(|| "never".into()),
+            last_used_by: status
+                .and_then(|s| s.last_used_by.as_ref())
+                .map(ToString::to_string)
+                .unwrap_or_default(),
         }
     }
 
@@ -229,6 +242,7 @@ impl KeyDetail {
                     kind: match h.kind {
                         HistoryKind::Rotated => "Rotated",
                         HistoryKind::Recorded => "Recorded",
+                        HistoryKind::Opened => "Opened create page",
                     },
                     expires: h
                         .expires_at

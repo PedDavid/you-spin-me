@@ -90,6 +90,17 @@
     }
   });
 
+  // Audit clicks on an on-demand key's Create link. The link itself opens
+  // the provider's page; the beacon records who opened it and when.
+  const trackOpen = (event) => {
+    const link = event.target.closest('a[data-track-open]');
+    if (!link || (event.type === 'auxclick' && event.button !== 1)) return;
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+    navigator.sendBeacon(link.dataset.trackOpen, new URLSearchParams({ _csrf: csrf }));
+  };
+  document.addEventListener('click', trackOpen);
+  document.addEventListener('auxclick', trackOpen);
+
   // After a successful rotation, clear the key from the form.
   document.addEventListener('rotation-complete', (event) => {
     event.target.closest('form')?.querySelectorAll('input[name="key"]').forEach((i) => { i.value = ''; });

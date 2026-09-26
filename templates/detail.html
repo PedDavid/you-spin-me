@@ -24,11 +24,17 @@
     </div>
     <div class="flex flex-wrap gap-2">
       {% if let Some(url) = key.row.renew_url %}
+      {% if key.row.on_demand %}
+      <a class="btn"  href="{{ url }}" target="_blank" rel="noopener noreferrer" data-track-open="/keys/{{ key.row.name }}/opened" title="Opening the create page is recorded">
+            Create {% include "icons/external-link.svg" %}
+          </a>
+      {% else %}
       <a class="btn" data-variant="outline" href="{{ url }}" target="_blank" rel="noopener noreferrer">
         Renew {% include "icons/external-link.svg" %}
       </a>
       {% endif %}
-      {% if layout.admin %}
+      {% endif %}
+      {% if layout.admin && !key.row.on_demand %}
       {% if can_rotate %}
       <button type="button" class="btn" data-dialog-open="rotate-dialog">
         {% include "icons/rotate-cw.svg" %} Rotate
@@ -50,6 +56,21 @@
   {% endif %}{% endfor %}
 
   <div class="grid gap-4 md:grid-cols-2">
+    {% if key.row.on_demand %}
+    <div class="card">
+      <header>
+        <h2>On demand</h2>
+        <p>Created when needed and deleted right after. Never stored, so there is nothing to expire or alert on.</p>
+      </header>
+      <section>
+        <dl class="kv">
+          <dt>Last opened</dt>
+          <dd>{% if key.row.last_used_by.is_empty() %}never{% else %}{{ key.row.last_used_rel }} <span class="text-muted-foreground">by {{ key.row.last_used_by }}</span>{% endif %}</dd>
+        </dl>
+        <p class="mt-3 text-sm text-muted-foreground">Opening the provider's create page with <em>Create</em> is recorded here and as a Kubernetes Event. Whether a token was actually created there is not visible to this app.</p>
+      </section>
+    </div>
+    {% else %}
     <div class="card">
       <header>
         <h2>Schedule</h2>
@@ -77,6 +98,7 @@
         {% endif %}
       </section>
     </div>
+    {% endif %}
 
     <div class="card">
       <header>
@@ -102,7 +124,11 @@
       </header>
       <section>
         {% if key.targets.is_empty() %}
+        {% if key.row.on_demand %}
+        <p class="text-sm text-muted-foreground">None: on-demand keys are never stored.</p>
+        {% else %}
         <p class="text-sm text-muted-foreground">No targets: this key is tracked only. Use <em>Record rotation</em> after renewing it.</p>
+        {% endif %}
         {% else %}
         <ul class="flex flex-col gap-2 text-sm">
           {% for t in key.targets %}
@@ -142,7 +168,7 @@
   <div class="card">
     <header>
       <h2>History</h2>
-      <p>The last {{ key.history.len() }} rotations.</p>
+      <p>The last {{ key.history.len() }} events.</p>
     </header>
     <section>
       {% if key.history.is_empty() %}
@@ -165,7 +191,7 @@
 {% endblock %}
 
 {% block dialogs %}
-{% if layout.admin %}
+{% if layout.admin && !key.row.on_demand %}
 {% if can_rotate %}
 <dialog id="rotate-dialog" class="dialog" aria-labelledby="rotate-title">
   <form class="w-full sm:max-w-lg" hx-post="/keys/{{ key.row.name }}/rotate" hx-target="#rotate-result" hx-swap="innerHTML" hx-disabled-elt="find button[type=submit]" autocomplete="off">

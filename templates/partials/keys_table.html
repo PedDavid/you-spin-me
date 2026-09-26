@@ -37,13 +37,20 @@
         </td>
         <td><span class="badge state-badge" data-state="{{ row.state_str() }}"><span class="state-dot"></span>{{ row.state_label() }}</span></td>
         <td>
+          {% if row.on_demand %}
+          <div class="text-muted-foreground">—</div>
+          <div class="text-xs text-muted-foreground">created when needed</div>
+          {% else %}
           <div title="{{ row.deadline_date }}">{{ row.deadline_rel }}</div>
           {% if !row.deadline_kind.is_empty() %}<div class="text-xs text-muted-foreground">{{ row.deadline_kind }}</div>{% endif %}
+          {% endif %}
         </td>
-        <td class="hidden md:table-cell text-muted-foreground">{{ row.last_rotated_rel }}</td>
+        <td class="hidden md:table-cell text-muted-foreground">{% if row.on_demand %}used {{ row.last_used_rel }}{% else %}{{ row.last_rotated_rel }}{% endif %}</td>
         <td class="hidden lg:table-cell text-muted-foreground">{{ row.owner }}</td>
         <td class="hidden sm:table-cell">
-          {% if row.targets_total == 0 %}
+          {% if row.on_demand %}
+          <span class="text-muted-foreground">never stored</span>
+          {% else if row.targets_total == 0 %}
           <span class="text-muted-foreground">manual</span>
           {% else if row.targets_failed > 0 %}
           <span class="badge" data-variant="destructive">{{ row.targets_failed }} of {{ row.targets_total }} failed</span>
@@ -53,9 +60,15 @@
         </td>
         <td class="text-end">
           {% if let Some(url) = row.renew_url %}
+          {% if row.on_demand %}
+          <a class="btn" data-variant="ghost" data-size="sm" href="{{ url }}" target="_blank" rel="noopener noreferrer" data-track-open="/keys/{{ row.name }}/opened" title="Opening the create page is recorded">
+            Create {% include "icons/external-link.svg" %}
+          </a>
+          {% else %}
           <a class="btn" data-variant="ghost" data-size="sm" href="{{ url }}" target="_blank" rel="noopener noreferrer">
             Renew {% include "icons/external-link.svg" %}
           </a>
+          {% endif %}
           {% endif %}
         </td>
       </tr>

@@ -216,6 +216,7 @@ pub fn router(state: AppState) -> Router {
         .route("/keys/{name}", get(pages::detail))
         .route("/keys/{name}/record", post(pages::record))
         .route("/keys/{name}/rotate", post(pages::rotate))
+        .route("/keys/{name}/opened", post(pages::opened))
         .route("/auth/login", get(auth::login))
         .route("/auth/callback", get(auth::callback))
         .route("/auth/logout", post(auth::logout))

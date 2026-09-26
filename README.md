@@ -129,6 +129,30 @@ NAME              PROVIDER   OWNER   EXPIRES                ROTATED   VALID
 renovate-github   github     david   2026-12-19T00:00:00Z   3d        True
 ```
 
+### On-demand keys
+
+Some keys are only created for a one-off task and deleted right after, so
+they are never stored and never expire. They can still be listed, with the
+create link, the permissions to pick and notes:
+
+```yaml
+spec:
+  lifecycle: onDemand          # default: managed
+  renewUrl: https://github.com/settings/personal-access-tokens/new
+  setup:
+    permissions: ["contents: write"]
+    notes: Create for the migration, delete right after.
+```
+
+- **No deadline, no alerts.** These keys show as *On demand* and only export
+  `youspinme_apikey_info` and `youspinme_apikey_last_used_timestamp_seconds`.
+- **Create instead of Renew or Rotate.** Clicking **Create** opens the
+  provider's page. It also records who opened it and when, in the key's
+  status, its history and a Kubernetes Event. The app cannot see whether a
+  token was actually created.
+- **Validation.** `targets` and `rotation.maxAge` are rejected by the `Valid`
+  condition, since both contradict "never stored".
+
 ## Security model
 
 - **Write-only.** The OpenBao policy allows `create` and `patch` only: existing
@@ -167,10 +191,11 @@ metrics carry the labels `namespace`, `name`, `provider` and `owner`.
 | `youspinme_apikey_expiry_timestamp_seconds` | Probed or manual expiry |
 | `youspinme_apikey_rotate_by_timestamp_seconds` | `lastRotated + maxAge` |
 | `youspinme_apikey_last_rotated_timestamp_seconds` | |
+| `youspinme_apikey_last_used_timestamp_seconds` | On-demand keys: when the create page was last opened |
 | `youspinme_apikey_warn_before_seconds`, `…_critical_before_seconds` | Per-key thresholds |
 | `youspinme_apikey_state_known` | 0 when there is no deadline at all |
 | `youspinme_apikey_target_healthy{target}` | Result of the last write per target |
-| `youspinme_apikey_info{display_name, renew_url}` | Metadata for joins |
+| `youspinme_apikey_info{lifecycle, display_name, renew_url}` | Metadata for joins |
 | `youspinme_rotations_total{result}` | ok, partial, failed, rejected, recorded |
 | `youspinme_probe_requests_total{provider,result}` | |
 

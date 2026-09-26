@@ -381,3 +381,95 @@ async fn step_up_requires_a_recent_login_to_rotate() {
     assert!(body(res).await.contains("Key rotated"));
     assert_eq!(writer.writes().len(), 1);
 }
+
+fn on_demand_key() -> you_spin_me::crd::ApiKey {
+    use you_spin_me::crd::{ApiKey, ApiKeySpec, Lifecycle};
+    ApiKey::new(
+        "adhoc",
+        ApiKeySpec {
+            lifecycle: Lifecycle::OnDemand,
+            renew_url: Some("https://github.com/settings/personal-access-tokens/new".into()),
+            ..Default::default()
+        },
+    )
+}
+
+fn opened_request(name: &str, cookie: &str, csrf: &str) -> Request<Body> {
+    Request::post(format!("/keys/{name}/opened"))
+        .header(
+            header::CONTENT_TYPE,
+            "application/x-www-form-urlencoded;charset=UTF-8",
+        )
+        .header(header::COOKIE, cookie)
+        .header(header::ORIGIN, ORIGIN)
+        .body(Body::from(format!("_csrf={csrf}")))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn opening_an_on_demand_key_is_audited_for_any_user() {
+    let h = harness(false);
+    h.repo.insert(on_demand_key());
+    // Viewers can open the create page too; it is their click that is recorded.
+    let cookie = session_cookie(&h.key, &session(false));
+
+    let res = h
+        .app
+        .clone()
+        .oneshot(opened_request("adhoc", &cookie, "wrong"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    let res = h
+        .app
+        .clone()
+        .oneshot(opened_request("adhoc", &cookie, "csrf-token"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    let status = h.repo.get("adhoc").unwrap().status.clone().unwrap();
+    assert_eq!(status.last_used_by, Some(Actor::new("u1", "bob")));
+    assert_eq!(h.repo.events()[0].1.reason, "CreatePageOpened");
+
+    // Managed keys are not audited this way.
+    let res = h
+        .app
+        .oneshot(opened_request("renovate", &cookie, "csrf-token"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn on_demand_keys_show_create_instead_of_rotation_actions() {
+    let h = harness(true);
+    h.repo.insert(on_demand_key());
+    let res = h
+        .app
+        .clone()
+        .oneshot(Request::get("/keys/adhoc").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let html = body(res).await;
+    assert!(
+        html.contains(r#"data-track-open="/keys/adhoc/opened""#),
+        "{html}"
+    );
+    assert!(html.contains("Last opened"));
+    assert!(!html.contains("Record rotation"));
+    assert!(!html.contains(r#"data-dialog-open="rotate-dialog""#));
+
+    let res = h
+        .app
+        .oneshot(
+            Request::get("/?state=on-demand")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let html = body(res).await;
+    assert!(html.contains("never stored"));
+    assert!(!html.contains("Renovate token"));
+}

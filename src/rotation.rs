@@ -61,6 +61,57 @@ pub enum RecordError {
     Repo(#[from] RepoError),
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum UseError {
+    #[error("{0:?} is not an on-demand key")]
+    NotOnDemand(String),
+    #[error(transparent)]
+    Repo(#[from] RepoError),
+}
+
+/// Audits that `actor` opened the create page of an on-demand key. The app
+/// cannot see whether a token was actually created at the provider.
+pub async fn record_use(
+    repo: &dyn Repository,
+    name: &str,
+    actor: &Actor,
+    now: Timestamp,
+) -> Result<ApiKey, UseError> {
+    let key = repo
+        .get(name)
+        .ok_or_else(|| RepoError::NotFound(name.to_string()))?;
+    if !key.is_on_demand() {
+        return Err(UseError::NotOnDemand(name.to_string()));
+    }
+    let updated = repo
+        .update_status(name, &|status| {
+            status.last_used = Some(Time(now));
+            status.last_used_by = Some(actor.clone());
+            status.history.insert(
+                0,
+                HistoryEntry {
+                    at: Time(now),
+                    by: actor.clone(),
+                    kind: HistoryKind::Opened,
+                    expires_at: None,
+                },
+            );
+            status.history.truncate(HISTORY_LIMIT);
+        })
+        .await?;
+    repo.record_event(
+        &updated,
+        AuditEvent {
+            reason: "CreatePageOpened",
+            note: format!("{actor} opened the create page"),
+            warning: false,
+        },
+    )
+    .await;
+    info!(key = name, actor = %actor.sub, "create page opened");
+    Ok(updated)
+}
+
 /// Records a rotation done outside the app (no key involved).
 pub async fn record(
     repo: &dyn Repository,
@@ -571,6 +622,39 @@ mod tests {
         assert_eq!(status.history[0].by.sub, "bob");
         assert_eq!(repo.events().len(), 13);
         assert_eq!(repo.events()[12].1.reason, "Recorded");
+    }
+
+    #[tokio::test]
+    async fn opening_an_on_demand_key_is_audited() {
+        let repo = MemoryRepository::new([
+            ApiKey::new(
+                "adhoc",
+                ApiKeySpec {
+                    lifecycle: crate::crd::Lifecycle::OnDemand,
+                    ..Default::default()
+                },
+            ),
+            ApiKey::new("managed", ApiKeySpec::default()),
+        ]);
+        let now = ts("2026-09-25T12:00:00Z");
+        let key = record_use(&repo, "adhoc", &actor("alice"), now)
+            .await
+            .unwrap();
+        let status = key.status.unwrap();
+        assert_eq!(status.last_used, Some(Time(now)));
+        assert_eq!(status.last_used_by, Some(actor("alice")));
+        assert_eq!(status.history[0].kind, HistoryKind::Opened);
+        assert!(status.last_rotated.is_none());
+        assert_eq!(repo.events()[0].1.reason, "CreatePageOpened");
+
+        assert!(matches!(
+            record_use(&repo, "managed", &actor("alice"), now).await,
+            Err(UseError::NotOnDemand(_))
+        ));
+        assert!(matches!(
+            record_use(&repo, "missing", &actor("alice"), now).await,
+            Err(UseError::Repo(RepoError::NotFound(_)))
+        ));
     }
 
     #[tokio::test]
