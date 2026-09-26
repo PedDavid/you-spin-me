@@ -29,6 +29,11 @@
       </a>
       {% endif %}
       {% if layout.admin %}
+      {% if can_rotate %}
+      <button type="button" class="btn" data-dialog-open="rotate-dialog">
+        {% include "icons/rotate-cw.svg" %} Rotate
+      </button>
+      {% endif %}
       <button type="button" class="btn" data-variant="secondary" data-dialog-open="record-dialog">
         {% include "icons/notebook-pen.svg" %} Record rotation
       </button>
@@ -161,6 +166,44 @@
 
 {% block dialogs %}
 {% if layout.admin %}
+{% if can_rotate %}
+<dialog id="rotate-dialog" class="dialog" aria-labelledby="rotate-title">
+  <form class="w-full sm:max-w-lg" hx-post="/keys/{{ key.row.name }}/rotate" hx-target="#rotate-result" hx-swap="innerHTML" hx-disabled-elt="find button[type=submit]" autocomplete="off">
+    <input type="hidden" name="_csrf" value="{{ layout.csrf }}">
+    <header>
+      <h2 id="rotate-title">Rotate {{ key.row.display_name }}</h2>
+      <p>The key is written to {{ key.targets.len() }} target(s) and never stored or shown by this app.</p>
+    </header>
+    <section class="flex flex-col gap-4">
+      <ol class="flex list-decimal flex-col gap-1 ps-5 text-sm">
+        <li>{% if let Some(url) = key.row.renew_url %}<a class="underline underline-offset-4" href="{{ url }}" target="_blank" rel="noopener noreferrer">Create a new key at the provider</a>{% else %}Create a new key at the provider{% endif %}{% if !key.permissions.is_empty() %} with: {{ key.permissions.join(", ") }}{% endif %}.</li>
+        <li>Paste it below and submit.</li>
+      </ol>
+      <div class="field">
+        <label for="new-key">New key</label>
+        <input id="new-key" type="password" name="key" required autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true">
+      </div>
+      <div class="field">
+        <label for="rotate-expires">Expires on <span class="text-muted-foreground">(optional)</span></label>
+        <input id="rotate-expires" type="date" name="expires_at" min="{{ today }}">
+        {% if probe_supported %}<p>Detected from {{ key.row.provider }} when possible.</p>{% endif %}
+      </div>
+      {% if probe_supported %}
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" class="input" name="skip_verification" value="1">
+        Skip checking the key with {{ key.row.provider }}
+      </label>
+      {% endif %}
+      <div id="rotate-result" aria-live="polite"></div>
+    </section>
+    <footer>
+      <button type="button" class="btn" data-variant="outline" data-dialog-close>Close</button>
+      <button type="submit" class="btn">{% include "icons/rotate-cw.svg" %} Write to targets</button>
+    </footer>
+    <button type="button" data-dialog-close aria-label="Close">{% include "icons/x.svg" %}</button>
+  </form>
+</dialog>
+{% endif %}
 <dialog id="record-dialog" class="dialog" aria-labelledby="record-title">
   <form method="post" action="/keys/{{ key.row.name }}/record" class="w-full sm:max-w-md">
     <input type="hidden" name="_csrf" value="{{ layout.csrf }}">

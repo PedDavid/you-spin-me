@@ -27,7 +27,10 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use you_spin_me::config::Config;
 use you_spin_me::metrics::Metrics;
+use you_spin_me::providers::NoProbe;
 use you_spin_me::repo::{MemoryRepository, Repository};
+use you_spin_me::rotation::Rotator;
+use you_spin_me::targets::MemoryWriter;
 use you_spin_me::web::auth::{AuthMode, SESSION_COOKIE, Session};
 use you_spin_me::web::{AppState, router};
 
@@ -117,7 +120,21 @@ fn app(idp: &Idp, key: &Key) -> Router {
     let repo: Arc<dyn Repository> = Arc::new(MemoryRepository::new([]));
     let metrics = Metrics::new(repo.clone(), cfg.thresholds());
     let auth = AuthMode::from_config(&cfg.auth, &cfg.public_url, false).unwrap();
-    router(AppState::new(cfg, repo, metrics, auth, key.clone()))
+    let rotator = Arc::new(Rotator::new(
+        repo.clone(),
+        Arc::new(MemoryWriter::default()),
+        Arc::new(NoProbe),
+        metrics.clone(),
+        cfg.allowed_paths(),
+    ));
+    router(AppState::new(
+        cfg,
+        repo,
+        metrics,
+        auth,
+        rotator,
+        key.clone(),
+    ))
 }
 
 fn set_cookie(res: &axum::response::Response, name: &str) -> String {

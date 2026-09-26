@@ -9,12 +9,13 @@ use axum_extra::extract::CookieJar;
 use jiff::Timestamp;
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
+use secrecy::SecretString;
 use serde::Deserialize;
 
 use super::auth::{Admin, AuthMode, Session, User};
 use super::views::{KeyDetail, KeyRow, fmt_date, state_label};
 use super::{AppError, AppState};
-use crate::rotation::{self, RecordError};
+use crate::rotation::{self, ProbeOutcome, RecordError, RotateOutcome, RotateRequest};
 use crate::schedule::State as KeyState;
 
 /// Data shared by every full page.
@@ -205,6 +206,8 @@ fn sort_rows(rows: &mut [KeyRow], sort: &str) {
 struct DetailPage {
     layout: Layout,
     key: KeyDetail,
+    can_rotate: bool,
+    probe_supported: bool,
     notice: String,
     today: String,
 }
@@ -237,6 +240,8 @@ pub async fn detail(
     Ok(Html(
         DetailPage {
             layout: Layout::new(&state, &session, &jar, detail.row.display_name.clone()),
+            can_rotate: !key.spec.targets.is_empty(),
+            probe_supported: key.spec.provider != crate::crd::Provider::Generic,
             key: detail,
             notice: notice.to_string(),
             today: fmt_date(now),
@@ -315,4 +320,97 @@ pub async fn record(
 
 pub fn urlencode(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
+}
+
+#[derive(Deserialize)]
+pub struct RotateForm {
+    #[serde(rename = "_csrf")]
+    csrf: Option<String>,
+    key: SecretString,
+    #[serde(default)]
+    expires_at: String,
+    #[serde(default)]
+    skip_verification: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "partials/rotate_result.html")]
+struct RotateResult {
+    name: String,
+    error: String,
+    outcome: Option<RotateOutcome>,
+    consumers: Vec<String>,
+}
+
+impl RotateResult {
+    fn probe_line(&self) -> String {
+        match self.outcome.as_ref().map(|o| &o.probe) {
+            Some(ProbeOutcome::Checked(r)) => {
+                let who = r
+                    .identity
+                    .as_deref()
+                    .map(|i| format!("belongs to {i}"))
+                    .unwrap_or_else(|| "is valid".into());
+                let expiry = r
+                    .expires_at
+                    .map(|e| format!(", expires {}", fmt_date(e)))
+                    .unwrap_or_else(|| ", no expiry reported".into());
+                format!("Checked with the provider: the key {who}{expiry}.")
+            }
+            Some(ProbeOutcome::Skipped) => "Verification skipped.".into(),
+            _ => String::new(),
+        }
+    }
+}
+
+pub async fn rotate(
+    State(state): State<AppState>,
+    Admin(session): Admin,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Form(form): Form<RotateForm>,
+) -> Result<Response, AppError> {
+    session.check_csrf(&headers, form.csrf.as_deref())?;
+    let consumers = state
+        .inner
+        .repo
+        .get(&name)
+        .map(|k| k.spec.consumers.clone())
+        .unwrap_or_default();
+    let mut result = RotateResult {
+        name: name.clone(),
+        error: String::new(),
+        outcome: None,
+        consumers,
+    };
+    let manual_expires_at = match parse_date(&form.expires_at) {
+        Ok(d) => d,
+        Err(e) => {
+            result.error = e.to_string();
+            return Ok(Html(result.render()?).into_response());
+        }
+    };
+    let request = RotateRequest {
+        value: form.key,
+        actor: session.actor(),
+        manual_expires_at,
+        skip_verification: form.skip_verification.is_some(),
+    };
+    // Errors are rendered into the dialog (htmx only swaps 2xx responses).
+    match state.inner.rotator.rotate(&name, request).await {
+        Ok(outcome) => {
+            let completed = outcome.completed;
+            result.outcome = Some(outcome);
+            let html = Html(result.render()?);
+            if completed {
+                Ok(([("HX-Trigger", "rotation-complete")], html).into_response())
+            } else {
+                Ok(html.into_response())
+            }
+        }
+        Err(e) => {
+            result.error = e.to_string();
+            Ok(Html(result.render()?).into_response())
+        }
+    }
 }

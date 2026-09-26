@@ -25,6 +25,24 @@ jobs:
           cargo run --quiet --locked --bin crdgen > /tmp/apikeys.yaml
           diff -u deploy/crds/apikeys.yaml /tmp/apikeys.yaml
 
+  openbao:
+    runs-on: ubuntu-latest
+    services:
+      openbao:
+        image: openbao/openbao:2.4.1
+        env:
+          BAO_DEV_ROOT_TOKEN_ID: root
+        ports: ["8200:8200"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94
+      - uses: Swatinem/rust-cache@v2
+      - name: Write-only policy against a real OpenBao
+        env:
+          YSM_TEST_OPENBAO_ADDR: http://127.0.0.1:8200
+          YSM_TEST_OPENBAO_ROOT_TOKEN: root
+        run: cargo test --locked --test openbao
+
   css:
     runs-on: ubuntu-latest
     steps:
