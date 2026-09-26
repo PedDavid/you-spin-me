@@ -212,6 +212,7 @@ async fn origin_check(State(state): State<AppState>, req: Request, next: Next) -
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(pages::index))
+        .route("/search", get(pages::search))
         .route("/keys/{name}", get(pages::detail))
         .route("/keys/{name}/record", post(pages::record))
         .route("/keys/{name}/rotate", post(pages::rotate))

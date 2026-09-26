@@ -21,6 +21,14 @@
         <span>you-spin-me</span>
       </a>
       <div class="ms-auto flex items-center gap-1">
+        <button type="button" class="btn hidden sm:inline-flex text-muted-foreground" data-variant="outline" data-size="sm" data-palette-open aria-label="Search keys" aria-keyshortcuts="Control+K Meta+K">
+          {% include "icons/search.svg" %}
+          <span class="pe-4">Search keys…</span>
+          <kbd class="kbd">⌘K</kbd>
+        </button>
+        <button type="button" class="btn sm:hidden" data-variant="ghost" data-size="icon" data-palette-open aria-label="Search keys">
+          {% include "icons/search.svg" %}
+        </button>
         <button type="button" class="btn" data-variant="ghost" data-size="icon" data-theme-toggle aria-label="Toggle dark mode">
           <span class="dark:hidden">{% include "icons/moon.svg" %}</span>
           <span class="hidden dark:inline">{% include "icons/sun.svg" %}</span>
@@ -44,5 +52,15 @@
     {% block content %}{% endblock %}
   </main>
   {% block dialogs %}{% endblock %}
+  <dialog id="command-palette" class="command-dialog" aria-label="Search keys">
+    <div class="command">
+      <header>
+        {% include "icons/search.svg" %}
+        <input type="search" name="q" placeholder="Search keys…" autocomplete="off" aria-label="Search keys"
+               hx-get="/search" hx-trigger="input changed delay:150ms, search, palette-open" hx-target="#command-results">
+      </header>
+      <div id="command-results" role="menu" aria-orientation="vertical" data-empty="No keys found."></div>
+    </div>
+  </dialog>
 </body>
 </html>
