@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use jiff::{SignedDuration, Timestamp};
+use jiff::Timestamp;
 use reqwest::StatusCode;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
@@ -59,10 +59,7 @@ impl HttpProber {
             .headers()
             .get(EXPIRATION_HEADER)
             .and_then(|v| v.to_str().ok())
-            .and_then(parse_github_expiration)
-            // Some tokens report the current time instead of their expiry;
-            // treat anything that close to now as unknown.
-            .filter(|t| t.duration_since(Timestamp::now()) > SignedDuration::from_mins(5));
+            .and_then(parse_github_expiration);
         match res.status() {
             StatusCode::OK => {
                 let user: User = res
@@ -74,11 +71,12 @@ impl HttpProber {
                     identity: Some(user.login),
                 })
             }
-            // Valid token without access to /user (e.g. a GitHub App token).
-            StatusCode::FORBIDDEN => Ok(ProbeResult {
-                expires_at,
-                identity: None,
-            }),
+            // 403 also means rate limiting or a blocked request, so it says
+            // nothing about the key. Tokens that cannot read /user (GitHub
+            // App tokens) need "skip verification".
+            StatusCode::FORBIDDEN => Err(ProbeError::Unavailable(
+                "GitHub returned 403 Forbidden (rate limit, or a token without access to /user; skip verification for those)".into(),
+            )),
             StatusCode::UNAUTHORIZED => Err(ProbeError::Rejected(
                 "GitHub returned 401 Bad credentials".into(),
             )),
@@ -235,15 +233,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn github_expiry_equal_to_now_is_ignored() {
+    async fn github_keeps_an_expiry_in_the_next_minutes() {
         let server = MockServer::start().await;
-        let now = Timestamp::now()
-            .strftime("%Y-%m-%d %H:%M:%S UTC")
-            .to_string();
+        let soon = Timestamp::now() + jiff::SignedDuration::from_mins(2);
+        let header_value = soon.strftime("%Y-%m-%d %H:%M:%S UTC").to_string();
         Mock::given(method("GET"))
             .respond_with(
                 ResponseTemplate::new(200)
-                    .insert_header(EXPIRATION_HEADER, now.as_str())
+                    .insert_header(EXPIRATION_HEADER, header_value.as_str())
                     .set_body_json(json!({"login": "octocat"})),
             )
             .mount(&server)
@@ -254,7 +251,26 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(r.expires_at, None);
+        assert_eq!(r.expires_at.unwrap().as_second(), soon.as_second());
+    }
+
+    #[tokio::test]
+    async fn github_403_does_not_verify_the_key() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .insert_header("x-ratelimit-remaining", "0")
+                    .set_body_json(json!({"message": "API rate limit exceeded"})),
+            )
+            .mount(&server)
+            .await;
+        let err = prober(&server)
+            .await
+            .probe(Provider::Github, &SecretString::from("anything"))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProbeError::Unavailable(_)), "{err}");
     }
 
     #[tokio::test]

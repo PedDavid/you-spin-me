@@ -218,6 +218,8 @@ YSM_TEST_OPENBAO_ADDR=http://127.0.0.1:8200 YSM_TEST_OPENBAO_ROOT_TOKEN=root car
 - **Rotation state can be lost.** It lives in `.status`, which is not in git.
   After a cluster rebuild, keys show *unknown* (and alert) until their dates are
   recorded again.
-- **Cloudflare account-owned tokens** can't be checked with the user endpoint;
-  tick *skip verification* for those.
+- **Cloudflare account-owned tokens** can't be checked with the user endpoint,
+  and **GitHub tokens without access to `/user`** (such as GitHub App tokens)
+  get a 403 that can't be told apart from rate limiting. Tick *skip
+  verification* for those.
 - **GitHub expiry** is only detected for personal access tokens.
