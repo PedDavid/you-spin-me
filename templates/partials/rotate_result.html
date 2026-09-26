@@ -1,4 +1,13 @@
-{% if !error.is_empty() %}
+{% if reauth %}
+<div class="alert" role="alert">
+  {% include "icons/shield-check.svg" %}
+  <h2>Please log in again</h2>
+  <section>
+    <p>Rotating a key needs a recent login. Nothing was written.</p>
+    <p><a class="underline underline-offset-4" href="/auth/login?reauth=1&amp;next=/keys/{{ name }}">Log in again</a>, then reopen this dialog.</p>
+  </section>
+</div>
+{% else if !error.is_empty() %}
 <div class="alert" data-variant="destructive" role="alert">
   {% include "icons/circle-x.svg" %}
   <h2>Nothing was written</h2>

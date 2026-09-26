@@ -28,6 +28,8 @@ oidc:
   adminClaim: groups
   adminValue: you-spin-me-admins
   sessionTtl: 8h
+  # Require a login no older than this to rotate a key, e.g. 15m. Empty = off.
+  stepUpMaxAge: ""
 
 # Key encrypting session cookies. Generated once and kept across upgrades
 # unless an existing Secret (with key `cookie-key`, >= 64 bytes) is given.

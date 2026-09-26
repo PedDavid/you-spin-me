@@ -272,9 +272,16 @@ fn login_auth_time(
 #[derive(Deserialize)]
 pub struct LoginQuery {
     next: Option<String>,
-    /// Force a fresh interactive login (step-up).
-    #[serde(default)]
-    reauth: bool,
+    /// Force a fresh interactive login (step-up). Any value but `0`/`false`.
+    reauth: Option<String>,
+}
+
+impl LoginQuery {
+    fn reauth(&self) -> bool {
+        self.reauth
+            .as_deref()
+            .is_some_and(|v| v != "0" && v != "false")
+    }
 }
 
 /// Only same-site relative paths are accepted as redirect targets.
@@ -322,7 +329,7 @@ pub async fn login(
     for scope in &oidc.scopes {
         request = request.add_scope(Scope::new(scope.clone()));
     }
-    if q.reauth {
+    if q.reauth() {
         request = request
             .add_prompt(CoreAuthPrompt::Login)
             .set_max_age(std::time::Duration::ZERO);
@@ -336,7 +343,7 @@ pub async fn login(
         next,
         started: now,
         exp: now + LOGIN_TTL_SECS,
-        reauth: q.reauth,
+        reauth: q.reauth(),
     };
     let value =
         serde_json::to_string(&login_state).map_err(|e| AppError::Internal(e.to_string()))?;
@@ -596,6 +603,19 @@ mod tests {
         assert!(claim_contains(&claims, "role", "admin"));
         assert!(claim_contains(&claims, "realm_access.roles", "keys-admin"));
         assert!(!claim_contains(&claims, "missing.path", "x"));
+    }
+
+    #[test]
+    fn reauth_flag_accepts_common_spellings() {
+        let q = |v: Option<&str>| LoginQuery {
+            next: None,
+            reauth: v.map(str::to_string),
+        };
+        assert!(q(Some("1")).reauth());
+        assert!(q(Some("true")).reauth());
+        assert!(!q(Some("0")).reauth());
+        assert!(!q(Some("false")).reauth());
+        assert!(!q(None).reauth());
     }
 
     #[test]
