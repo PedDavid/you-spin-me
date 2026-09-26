@@ -1,0 +1,67 @@
+{% if rows.is_empty() %}
+<div class="empty rounded-lg border border-dashed">
+  <header>
+    <figure>{% include "icons/key-round.svg" %}</figure>
+    {% if total == 0 %}
+    <h3>No API keys yet</h3>
+    <p>Add <code>ApiKey</code> resources to your GitOps repository to see them here.</p>
+    {% else %}
+    <h3>No matching keys</h3>
+    <p>Try a different filter.</p>
+    {% endif %}
+  </header>
+</div>
+{% else %}
+<div class="table-container rounded-lg border">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>Status</th>
+        <th>Due</th>
+        <th class="hidden md:table-cell">Last rotated</th>
+        <th class="hidden lg:table-cell">Owner</th>
+        <th class="hidden sm:table-cell">Targets</th>
+        <th class="text-end"><span class="sr-only">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>
+          <a href="/keys/{{ row.name }}" class="font-medium hover:underline">{{ row.display_name }}</a>
+          <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>{{ row.provider }}</span>
+            {% if !row.valid %}<span class="badge" data-variant="destructive">invalid spec</span>{% endif %}
+          </div>
+        </td>
+        <td><span class="badge state-badge" data-state="{{ row.state_str() }}"><span class="state-dot"></span>{{ row.state_label() }}</span></td>
+        <td>
+          <div title="{{ row.deadline_date }}">{{ row.deadline_rel }}</div>
+          {% if !row.deadline_kind.is_empty() %}<div class="text-xs text-muted-foreground">{{ row.deadline_kind }}</div>{% endif %}
+        </td>
+        <td class="hidden md:table-cell text-muted-foreground">{{ row.last_rotated_rel }}</td>
+        <td class="hidden lg:table-cell text-muted-foreground">{{ row.owner }}</td>
+        <td class="hidden sm:table-cell">
+          {% if row.targets_total == 0 %}
+          <span class="text-muted-foreground">manual</span>
+          {% else if row.targets_failed > 0 %}
+          <span class="badge" data-variant="destructive">{{ row.targets_failed }} of {{ row.targets_total }} failed</span>
+          {% else %}
+          <span class="text-muted-foreground">{{ row.targets_total }}</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          {% if let Some(url) = row.renew_url %}
+          <a class="btn" data-variant="ghost" data-size="sm" href="{{ url }}" target="_blank" rel="noopener noreferrer">
+            Renew {% include "icons/external-link.svg" %}
+          </a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% if oob %}{% include "partials/state_chips.html" %}{% endif %}

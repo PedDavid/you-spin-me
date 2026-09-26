@@ -5,7 +5,8 @@ use jiff::Timestamp;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 
 use crate::crd::{
-    ApiKey, ApiKeyStatus, ExpirySource, HISTORY_LIMIT, HistoryEntry, HistoryKind, ProbeStatus,
+    Actor, ApiKey, ApiKeyStatus, ExpirySource, HISTORY_LIMIT, HistoryEntry, HistoryKind,
+    ProbeStatus,
 };
 use crate::repo::{AuditEvent, RepoError, Repository};
 
@@ -13,7 +14,7 @@ use crate::repo::{AuditEvent, RepoError, Repository};
 pub fn apply_rotation(
     status: &mut ApiKeyStatus,
     at: Timestamp,
-    by: &str,
+    by: &Actor,
     kind: HistoryKind,
     manual_expires_at: Option<Timestamp>,
     probe: Option<ProbeStatus>,
@@ -25,7 +26,7 @@ pub fn apply_rotation(
         (None, None) => (None, ExpirySource::None),
     };
     status.last_rotated = Some(Time(at));
-    status.rotated_by = Some(by.to_string());
+    status.rotated_by = Some(by.clone());
     status.manual_expires_at = manual_expires_at.map(Time);
     status.expires_at = expires_at.clone();
     status.expires_at_source = Some(source);
@@ -34,7 +35,7 @@ pub fn apply_rotation(
         0,
         HistoryEntry {
             at: Time(at),
-            by: by.to_string(),
+            by: by.clone(),
             kind,
             expires_at,
         },
@@ -56,7 +57,7 @@ pub enum RecordError {
 pub async fn record(
     repo: &dyn Repository,
     name: &str,
-    actor: &str,
+    actor: &Actor,
     rotated_at: Timestamp,
     expires_at: Option<Timestamp>,
     now: Timestamp,
@@ -91,7 +92,7 @@ pub async fn record(
         },
     )
     .await;
-    tracing::info!(key = name, actor, %rotated_at, "rotation recorded");
+    tracing::info!(key = name, actor = %actor.sub, %rotated_at, "rotation recorded");
     Ok(updated)
 }
 
@@ -105,18 +106,24 @@ mod tests {
         s.parse().unwrap()
     }
 
+    fn actor(sub: &str) -> Actor {
+        Actor::new(sub, format!("{sub} (display)"))
+    }
+
     #[tokio::test]
     async fn record_updates_status_and_history() {
         let repo = MemoryRepository::new([ApiKey::new("k", ApiKeySpec::default())]);
         let now = ts("2026-09-25T12:00:00Z");
         for day in 1..=12 {
             let at = ts(&format!("2026-09-{day:02}T00:00:00Z"));
-            record(&repo, "k", "alice", at, None, now).await.unwrap();
+            record(&repo, "k", &actor("alice"), at, None, now)
+                .await
+                .unwrap();
         }
         let key = record(
             &repo,
             "k",
-            "bob",
+            &actor("bob"),
             ts("2026-09-20T00:00:00Z"),
             Some(ts("2026-12-01T00:00:00Z")),
             now,
@@ -124,11 +131,11 @@ mod tests {
         .await
         .unwrap();
         let status = key.status.unwrap();
-        assert_eq!(status.rotated_by.as_deref(), Some("bob"));
+        assert_eq!(status.rotated_by, Some(actor("bob")));
         assert_eq!(status.expires_at_source, Some(ExpirySource::Manual));
         assert_eq!(status.expires_at, Some(Time(ts("2026-12-01T00:00:00Z"))));
         assert_eq!(status.history.len(), HISTORY_LIMIT);
-        assert_eq!(status.history[0].by, "bob");
+        assert_eq!(status.history[0].by.sub, "bob");
         assert_eq!(repo.events().len(), 13);
         assert_eq!(repo.events()[12].1.reason, "Recorded");
     }
@@ -137,19 +144,27 @@ mod tests {
     async fn record_rejects_bad_dates() {
         let repo = MemoryRepository::new([ApiKey::new("k", ApiKeySpec::default())]);
         let now = ts("2026-09-25T12:00:00Z");
-        let err = record(&repo, "k", "a", ts("2026-10-01T00:00:00Z"), None, now).await;
+        let err = record(
+            &repo,
+            "k",
+            &actor("a"),
+            ts("2026-10-01T00:00:00Z"),
+            None,
+            now,
+        )
+        .await;
         assert!(matches!(err, Err(RecordError::FutureDate)));
         let err = record(
             &repo,
             "k",
-            "a",
+            &actor("a"),
             ts("2026-09-01T00:00:00Z"),
             Some(ts("2026-08-01T00:00:00Z")),
             now,
         )
         .await;
         assert!(matches!(err, Err(RecordError::ExpiryBeforeRotation)));
-        let err = record(&repo, "missing", "a", now, None, now).await;
+        let err = record(&repo, "missing", &actor("a"), now, None, now).await;
         assert!(matches!(
             err,
             Err(RecordError::Repo(RepoError::NotFound(_)))
@@ -167,7 +182,7 @@ mod tests {
         apply_rotation(
             &mut status,
             ts("2026-09-01T00:00:00Z"),
-            "a",
+            &actor("a"),
             HistoryKind::Rotated,
             Some(ts("2026-12-01T00:00:00Z")),
             Some(probe),
